@@ -103,6 +103,7 @@ Frontend:
 
 ## Test Mission Assets
 - Примеры CRM payload для ручной проверки лежат в `mock.json`.
+- Backend читает `mock.json` напрямую из корня проекта через bind-mount (`./mock.json -> /app/mock.json`), поэтому изменения файла подхватываются без пересборки образа.
 
 ## Security and Maintainability
 - Конфигурация и секреты через env, без hardcode.

@@ -29,6 +29,8 @@ services:
       WEBHOOK_TOKEN: ${WEBHOOK_TOKEN:-}
       PUBLIC_HOST: ${PUBLIC_HOST:-localhost}
       NGINX_PORT: ${NGINX_PORT:-8005}
+    volumes:
+      - ./mock.json:/app/mock.json:ro
   frontend:
     build:
       context: ./frontend

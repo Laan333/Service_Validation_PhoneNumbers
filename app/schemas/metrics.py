@@ -51,6 +51,13 @@ class DeleteMetricsResponse(BaseModel):
     deleted: int
 
 
+class TopReasonItem(BaseModel):
+    """Single bucket in top invalid reasons."""
+
+    reason: str
+    count: int
+
+
 class AdvancedMetricsResponse(BaseModel):
     """Advanced dashboard analytics."""
 
@@ -59,5 +66,5 @@ class AdvancedMetricsResponse(BaseModel):
     deterministic_success_rate: float
     normalization_coverage: float
     invalid_share: float
-    top_reasons: list[dict[str, int]]
+    top_reasons: list[TopReasonItem]
     source_split: dict[str, int]

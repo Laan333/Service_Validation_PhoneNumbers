@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     webhook_token: str = Field(default="", alias="WEBHOOK_TOKEN")
     public_host: str = Field(default="localhost", alias="PUBLIC_HOST")
     nginx_port: int = Field(default=8005, alias="NGINX_PORT")
+    mock_json_path: str = Field(
+        default="",
+        alias="MOCK_JSON_PATH",
+        description="Optional absolute path to mock.json; if relative, resolved from repo root (parent of app package).",
+    )
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

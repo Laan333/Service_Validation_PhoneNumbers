@@ -5,18 +5,31 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/dev", tags=["dev"])
 
 
+def _repo_root() -> Path:
+    """Parent of the `app` package (WORKDIR `/app` in Docker, git root locally)."""
+    return Path(__file__).resolve().parents[3]
+
+
 def _resolve_mock_path() -> Path:
-    """Prefer mock.json next to process cwd (project root when WORKDIR is /app), then Docker path."""
-    cwd_path = Path.cwd() / "mock.json"
-    docker_path = Path("/app/mock.json")
-    if cwd_path.exists():
-        return cwd_path
-    if docker_path.exists():
-        return docker_path
+    """Resolve mock.json: optional MOCK_JSON_PATH, then repo root, then `/app/mock.json`."""
+    raw = (settings.mock_json_path or "").strip()
+    if raw:
+        configured = Path(raw)
+        if not configured.is_absolute():
+            configured = _repo_root() / configured
+        if configured.is_file():
+            return configured
+        logger.warning("MOCK_JSON_PATH is set but not a file (%s); using defaults.", configured)
+
+    for candidate in (_repo_root() / "mock.json", Path("/app/mock.json")):
+        if candidate.is_file():
+            return candidate
     raise FileNotFoundError("mock.json not found.")
 
 

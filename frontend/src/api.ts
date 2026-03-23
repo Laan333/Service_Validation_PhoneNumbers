@@ -1,4 +1,14 @@
-import type { AdvancedMetrics, CrmMockLead, MetricsPoint, MetricsSummary, RecentValidation } from "./types";
+import type {
+  AdvancedMetrics,
+  CrmMockLead,
+  InvalidReasonCountItem,
+  LlmTimeseriesPoint,
+  MetricsPoint,
+  MetricsSummary,
+  MismatchByCcItem,
+  RecentListFilters,
+  RecentValidation,
+} from "./types";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "";
 
@@ -19,12 +29,55 @@ export async function fetchTimeseries(days = 7): Promise<MetricsPoint[]> {
   return data.points;
 }
 
-export async function fetchRecent(limit = 20): Promise<RecentValidation[]> {
-  const response = await fetch(`${apiBase}/api/v1/metrics/recent?limit=${limit}`);
+export async function fetchRecent(limit = 20, filters?: RecentListFilters): Promise<RecentValidation[]> {
+  const params = new URLSearchParams();
+  params.set("limit", String(limit));
+  if (filters?.geoMismatchOnly) {
+    params.set("geo_mismatch_only", "true");
+  }
+  if (filters && filters.confidence !== "all") {
+    params.set("confidence", filters.confidence);
+  }
+  if (filters && filters.status !== "all") {
+    params.set("status", filters.status);
+  }
+  const response = await fetch(`${apiBase}/api/v1/metrics/recent?${params.toString()}`);
   if (!response.ok) {
     throw new Error("Failed to load recent validations.");
   }
   const data = (await response.json()) as { items: RecentValidation[] };
+  return data.items;
+}
+
+export async function fetchMismatchByCc(limit = 24, days?: number): Promise<MismatchByCcItem[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (days != null) {
+    params.set("days", String(days));
+  }
+  const response = await fetch(`${apiBase}/api/v1/metrics/chart/mismatch-by-cc?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error("Failed to load mismatch-by-CC chart.");
+  }
+  const data = (await response.json()) as { items: MismatchByCcItem[] };
+  return data.items;
+}
+
+export async function fetchLlmTimeseries(days = 7): Promise<LlmTimeseriesPoint[]> {
+  const response = await fetch(`${apiBase}/api/v1/metrics/chart/llm-timeseries?days=${days}`);
+  if (!response.ok) {
+    throw new Error("Failed to load LLM timeseries.");
+  }
+  const data = (await response.json()) as { points: LlmTimeseriesPoint[] };
+  return data.points;
+}
+
+export async function fetchInvalidReasonsChart(days?: number): Promise<InvalidReasonCountItem[]> {
+  const qs = days != null ? `?days=${days}` : "";
+  const response = await fetch(`${apiBase}/api/v1/metrics/chart/invalid-reasons${qs}`);
+  if (!response.ok) {
+    throw new Error("Failed to load invalid reasons chart.");
+  }
+  const data = (await response.json()) as { items: InvalidReasonCountItem[] };
   return data.items;
 }
 

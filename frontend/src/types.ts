@@ -65,3 +65,25 @@ export type AdvancedMetrics = {
   top_reasons: Array<{ reason: string; count: number }>;
   source_split: Record<string, number>;
 };
+
+export type MismatchByCcItem = {
+  assumed_dial_cc: string;
+  count: number;
+};
+
+export type LlmTimeseriesPoint = {
+  bucket: string;
+  llm: number;
+  deterministic: number;
+};
+
+export type InvalidReasonCountItem = {
+  reason: string;
+  count: number;
+};
+
+export type RecentListFilters = {
+  geoMismatchOnly: boolean;
+  confidence: "all" | "deterministic" | "llm";
+  status: "all" | "valid" | "invalid";
+};

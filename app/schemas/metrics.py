@@ -74,3 +74,43 @@ class AdvancedMetricsResponse(BaseModel):
     invalid_share: float
     top_reasons: list[TopReasonItem]
     source_split: dict[str, int]
+
+
+class MismatchByCcItem(BaseModel):
+    """Single bucket: assumed dial CC among geo-mismatch rows."""
+
+    assumed_dial_cc: str
+    count: int
+
+
+class MismatchByCcResponse(BaseModel):
+    """Chart payload: which dial codes disagree with visitor geo most often."""
+
+    items: list[MismatchByCcItem]
+
+
+class LlmTimeseriesPoint(BaseModel):
+    """Daily deterministic vs LLM usage."""
+
+    bucket: str
+    llm: int
+    deterministic: int
+
+
+class LlmTimeseriesResponse(BaseModel):
+    """Time series for LLM vs deterministic pipeline source."""
+
+    points: list[LlmTimeseriesPoint]
+
+
+class InvalidReasonCountItem(BaseModel):
+    """Invalid-only reason bucket."""
+
+    reason: str
+    count: int
+
+
+class InvalidReasonsChartResponse(BaseModel):
+    """Distribution of rejection reasons (invalid rows only)."""
+
+    items: list[InvalidReasonCountItem]

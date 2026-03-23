@@ -87,13 +87,23 @@ class LeadValidationRepository:
             for row in rows
         ]
 
-    async def recent(self, limit: int = 20) -> list[dict[str, object]]:
-        """Return latest processed validations."""
-        stmt = (
-            select(LeadValidationORM)
-            .order_by(LeadValidationORM.processed_at.desc())
-            .limit(limit)
-        )
+    async def recent(
+        self,
+        limit: int = 20,
+        *,
+        geo_mismatch_only: bool | None = None,
+        confidence: str | None = None,
+        status_filter: str | None = None,
+    ) -> list[dict[str, object]]:
+        """Return latest processed validations with optional filters."""
+        stmt = select(LeadValidationORM).order_by(LeadValidationORM.processed_at.desc())
+        if geo_mismatch_only is True:
+            stmt = stmt.where(LeadValidationORM.geo_mismatch.is_(True))
+        if confidence:
+            stmt = stmt.where(LeadValidationORM.validation_confidence == confidence)
+        if status_filter:
+            stmt = stmt.where(LeadValidationORM.status == status_filter)
+        stmt = stmt.limit(limit)
         rows = (await self._db_session.execute(stmt)).scalars().all()
         return [
             {
@@ -177,3 +187,61 @@ class LeadValidationRepository:
             "top_reasons": top_reasons,
             "source_split": source_split,
         }
+
+    async def mismatch_counts_by_dial_cc(self, limit: int = 24, *, days: int | None = None) -> list[dict[str, object]]:
+        """For geo_mismatch rows, count by assumed E.164 country calling code."""
+        stmt = (
+            select(LeadValidationORM.assumed_dial_cc, func.count(LeadValidationORM.id).label("cnt"))
+            .where(LeadValidationORM.geo_mismatch.is_(True))
+            .where(LeadValidationORM.assumed_dial_cc.is_not(None))
+            .where(LeadValidationORM.assumed_dial_cc != "")
+        )
+        if days is not None:
+            end = datetime.now(UTC)
+            start = end - timedelta(days=days)
+            stmt = stmt.where(LeadValidationORM.processed_at >= start)
+        stmt = (
+            stmt.group_by(LeadValidationORM.assumed_dial_cc)
+            .order_by(func.count(LeadValidationORM.id).desc())
+            .limit(limit)
+        )
+        rows = (await self._db_session.execute(stmt)).all()
+        return [{"assumed_dial_cc": str(row.assumed_dial_cc), "count": int(row.cnt)} for row in rows]
+
+    async def timeseries_llm_usage(self, days: int = 7) -> list[dict[str, object]]:
+        """Daily counts of validations by pipeline source (deterministic vs llm)."""
+        end = datetime.now(UTC)
+        start = end - timedelta(days=days)
+        bucket_expr = func.date_trunc("day", LeadValidationORM.processed_at)
+        stmt = (
+            select(
+                bucket_expr.label("bucket"),
+                func.sum(case((LeadValidationORM.source == "llm", 1), else_=0)).label("llm"),
+                func.sum(case((LeadValidationORM.source == "deterministic", 1), else_=0)).label("deterministic"),
+            )
+            .where(LeadValidationORM.processed_at >= start)
+            .group_by(bucket_expr)
+            .order_by(bucket_expr.asc())
+        )
+        rows = (await self._db_session.execute(stmt)).all()
+        return [
+            {
+                "bucket": row.bucket.isoformat() if row.bucket else "",
+                "llm": int(row.llm or 0),
+                "deterministic": int(row.deterministic or 0),
+            }
+            for row in rows
+        ]
+
+    async def invalid_reason_distribution(self, *, days: int | None = None) -> list[dict[str, object]]:
+        """Counts of rejection reasons among invalid rows only."""
+        stmt = select(LeadValidationORM.reason, func.count(LeadValidationORM.id).label("cnt")).where(
+            LeadValidationORM.status == "invalid"
+        ).where(LeadValidationORM.reason.is_not(None))
+        if days is not None:
+            end = datetime.now(UTC)
+            start = end - timedelta(days=days)
+            stmt = stmt.where(LeadValidationORM.processed_at >= start)
+        stmt = stmt.group_by(LeadValidationORM.reason).order_by(func.count(LeadValidationORM.id).desc())
+        rows = (await self._db_session.execute(stmt)).all()
+        return [{"reason": str(row.reason or "unknown"), "count": int(row.cnt)} for row in rows]

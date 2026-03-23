@@ -1,16 +1,30 @@
-import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   deleteAllRecent,
   deleteRecentById,
+  fetchAdvanced,
+  fetchInvalidReasonsChart,
+  fetchLlmTimeseries,
+  fetchMismatchByCc,
   fetchMockLeads,
   fetchRecent,
   fetchSummary,
   fetchTimeseries,
-  fetchAdvanced,
   sendLeadToWebhook,
 } from "./api";
-import type { AdvancedMetrics, CrmMockLead, MetricsPoint, MetricsSummary, RecentValidation, ReplayLogItem } from "./types";
+import type {
+  AdvancedMetrics,
+  CrmMockLead,
+  InvalidReasonCountItem,
+  LlmTimeseriesPoint,
+  MetricsPoint,
+  MetricsSummary,
+  MismatchByCcItem,
+  RecentListFilters,
+  RecentValidation,
+  ReplayLogItem,
+} from "./types";
 
 function StatusPill({ status }: { status: string }) {
   return <span className={`status-pill ${status === "valid" ? "status-ok" : "status-bad"}`}>{status}</span>;
@@ -63,23 +77,99 @@ function TrendPanel({ points }: { points: MetricsPoint[] }) {
   );
 }
 
-function ReasonsPanel({ reasons }: { reasons: Record<string, number> }) {
-  const entries = Object.entries(reasons).sort((a, b) => b[1] - a[1]);
-  const total = entries.reduce((acc, [, count]) => acc + count, 0) || 1;
+function prettifyReasonLabel(reason: string) {
+  return reason.replace(/_/g, " ");
+}
+
+function MismatchByCcPanel({ items }: { items: MismatchByCcItem[] }) {
+  const maxCount = Math.max(...items.map((i) => i.count), 1);
   return (
-    <section className="panel">
-      <h2>Failure Reasons</h2>
-      <ul className="reason-list">
-        {entries.map(([reason, count]) => (
-          <li key={reason}>
-            <div className="reason-meta">
-              <span>{reason}</span>
-              <small>{((count / total) * 100).toFixed(1)}%</small>
+    <section className="panel chart-panel">
+      <h2>Geo mismatch by dial CC</h2>
+      <p className="panel-subtitle chart-hint">
+        Assumed country calling codes on numbers that disagree with visitor IP country (same period as header).
+      </p>
+      {items.length === 0 ? (
+        <p className="muted-text">No geo mismatches in this period.</p>
+      ) : (
+        <div className="bars">
+          {items.map((row) => (
+            <div key={row.assumed_dial_cc} className="bar-row bar-row-wide">
+              <span className="bar-label" title={`+${row.assumed_dial_cc}`}>
+                +{row.assumed_dial_cc}
+              </span>
+              <div className="bar-track">
+                <div className="bar-fill bar-fill-warn" style={{ width: `${(row.count / maxCount) * 100}%` }} />
+              </div>
+              <strong>{row.count}</strong>
             </div>
-            <strong>{count}</strong>
-          </li>
-        ))}
-      </ul>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function LlmUsageOverTimePanel({ points }: { points: LlmTimeseriesPoint[] }) {
+  return (
+    <section className="panel chart-panel">
+      <h2>LLM usage over time</h2>
+      <p className="panel-subtitle chart-hint">
+        Share of validations that invoked the LLM path (<span className="legend-llm">LLM</span> vs{" "}
+        <span className="legend-det">deterministic</span>) per day.
+      </p>
+      {points.length === 0 ? (
+        <p className="muted-text">No data for this range.</p>
+      ) : (
+        <div className="bars">
+          {points.map((p) => {
+            const total = p.llm + p.deterministic || 1;
+            return (
+              <div key={p.bucket} className="bar-row bar-row-wide">
+                <span className="bar-label">{new Date(p.bucket).toLocaleDateString()}</span>
+                <div className="bar-track bar-track-split" title={`LLM ${p.llm}, deterministic ${p.deterministic}`}>
+                  <div className="bar-seg bar-det" style={{ width: `${(p.deterministic / total) * 100}%` }} />
+                  <div className="bar-seg bar-llm" style={{ width: `${(p.llm / total) * 100}%` }} />
+                </div>
+                <span className="bar-counts">
+                  <small>L{p.llm}</small> / <small>D{p.deterministic}</small>
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function InvalidReasonsChartPanel({ items }: { items: InvalidReasonCountItem[] }) {
+  const maxCount = Math.max(...items.map((i) => i.count), 1);
+  const total = items.reduce((acc, row) => acc + row.count, 0) || 1;
+  return (
+    <section className="panel chart-panel">
+      <h2>Invalid: reasons distribution</h2>
+      <p className="panel-subtitle chart-hint">Invalid rows only, same period as header.</p>
+      {items.length === 0 ? (
+        <p className="muted-text">No invalid rows yet.</p>
+      ) : (
+        <div className="bars">
+          {items.map((row) => (
+            <div key={row.reason} className="bar-row bar-row-wide">
+              <span className="bar-label bar-label-reason" title={row.reason}>
+                {prettifyReasonLabel(row.reason)}
+              </span>
+              <div className="bar-track">
+                <div className="bar-fill bar-fill-danger" style={{ width: `${(row.count / maxCount) * 100}%` }} />
+              </div>
+              <span className="bar-counts">
+                <strong>{row.count}</strong>
+                <small>{((row.count / total) * 100).toFixed(0)}%</small>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -142,11 +232,15 @@ function AdvancedPanel({ advanced }: { advanced: AdvancedMetrics }) {
 function RecentPanel({
   recent,
   mockLeads,
+  filters,
+  onFiltersChange,
   onDeleteOne,
   onDeleteAll,
 }: {
   recent: RecentValidation[];
   mockLeads: CrmMockLead[];
+  filters: RecentListFilters;
+  onFiltersChange: (next: RecentListFilters) => void;
   onDeleteOne: (id: number) => Promise<void>;
   onDeleteAll: () => Promise<void>;
 }) {
@@ -192,7 +286,7 @@ function RecentPanel({
     if (!reason) {
       return "-";
     }
-    return reason.replace(/_/g, " ");
+    return prettifyReasonLabel(reason);
   };
 
   const selectedMock = useMemo(() => {
@@ -206,13 +300,59 @@ function RecentPanel({
     <section className="panel">
       <div className="panel-header">
         <h2>Latest Processed Leads</h2>
-        <div className="table-controls">
+        <div className="table-controls table-controls-wrap">
           <input
             className="search-input"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search by lead or phone..."
           />
+          <div className="filter-row" aria-label="Table filters">
+            <label className="filter-label">
+              Mismatch
+              <select
+                className="rows-select"
+                value={filters.geoMismatchOnly ? "yes" : "all"}
+                onChange={(event) =>
+                  onFiltersChange({ ...filters, geoMismatchOnly: event.target.value === "yes" })
+                }
+              >
+                <option value="all">Any</option>
+                <option value="yes">Mismatch only</option>
+              </select>
+            </label>
+            <label className="filter-label">
+              Confidence
+              <select
+                className="rows-select"
+                value={filters.confidence}
+                onChange={(event) =>
+                  onFiltersChange({
+                    ...filters,
+                    confidence: event.target.value as RecentListFilters["confidence"],
+                  })
+                }
+              >
+                <option value="all">Any</option>
+                <option value="deterministic">Deterministic</option>
+                <option value="llm">LLM</option>
+              </select>
+            </label>
+            <label className="filter-label">
+              Status
+              <select
+                className="rows-select"
+                value={filters.status}
+                onChange={(event) =>
+                  onFiltersChange({ ...filters, status: event.target.value as RecentListFilters["status"] })
+                }
+              >
+                <option value="all">Any</option>
+                <option value="valid">Valid</option>
+                <option value="invalid">Invalid</option>
+              </select>
+            </label>
+          </div>
           <select
             className="rows-select"
             value={pageSize}
@@ -448,11 +588,21 @@ function ReplayPanel({
   );
 }
 
+const defaultListFilters: RecentListFilters = {
+  geoMismatchOnly: false,
+  confidence: "all",
+  status: "all",
+};
+
 function App() {
   const [summary, setSummary] = useState<MetricsSummary | null>(null);
   const [points, setPoints] = useState<MetricsPoint[]>([]);
   const [recent, setRecent] = useState<RecentValidation[]>([]);
   const [advanced, setAdvanced] = useState<AdvancedMetrics | null>(null);
+  const [mismatchByCc, setMismatchByCc] = useState<MismatchByCcItem[]>([]);
+  const [llmTsPoints, setLlmTsPoints] = useState<LlmTimeseriesPoint[]>([]);
+  const [invalidChart, setInvalidChart] = useState<InvalidReasonCountItem[]>([]);
+  const [listFilters, setListFilters] = useState<RecentListFilters>(defaultListFilters);
   const [days, setDays] = useState<number>(7);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -460,6 +610,7 @@ function App() {
   const [replayRunning, setReplayRunning] = useState(false);
   const [replayLogs, setReplayLogs] = useState<ReplayLogItem[]>([]);
   const [mockLeads, setMockLeads] = useState<CrmMockLead[]>([]);
+  const firstDashboardLoad = useRef(true);
 
   const appendReplayLog = (message: string, level: ReplayLogItem["level"] = "info") => {
     const item: ReplayLogItem = { ts: new Date().toLocaleTimeString(), message, level };
@@ -473,28 +624,47 @@ function App() {
     return items;
   };
 
-  const loadDashboard = async (periodDays: number, keepLoadingState = true) => {
-    if (keepLoadingState) {
+  const loadDashboard = async (
+    periodDays: number,
+    filters: RecentListFilters,
+    useFullLoading: boolean,
+  ) => {
+    if (useFullLoading) {
       setLoading(true);
       setRefreshing(false);
     } else {
       setRefreshing(true);
     }
     try {
-      const [summaryData, timeseriesData, recentItems, advancedData] = await Promise.all([
+      const [
+        summaryData,
+        timeseriesData,
+        recentItems,
+        advancedData,
+        mismatchData,
+        llmChartData,
+        invalidData,
+      ] = await Promise.all([
         fetchSummary(),
         fetchTimeseries(periodDays),
-        fetchRecent(20),
+        fetchRecent(350, filters),
         fetchAdvanced(),
+        fetchMismatchByCc(24, periodDays),
+        fetchLlmTimeseries(periodDays),
+        fetchInvalidReasonsChart(periodDays),
       ]);
       setSummary(summaryData);
       setPoints(timeseriesData);
       setRecent(recentItems);
       setAdvanced(advancedData);
+      setMismatchByCc(mismatchData);
+      setLlmTsPoints(llmChartData);
+      setInvalidChart(invalidData);
+      setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unexpected dashboard error.");
     } finally {
-      if (keepLoadingState) {
+      if (useFullLoading) {
         setLoading(false);
       } else {
         setRefreshing(false);
@@ -525,7 +695,7 @@ function App() {
         }
       }
       appendReplayLog("Replay finished. Refreshing dashboard metrics...", "info");
-      await loadDashboard(days, false);
+      await loadDashboard(days, listFilters, false);
       appendReplayLog("Dashboard updated after replay.", "success");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to run replay.";
@@ -539,7 +709,7 @@ function App() {
     try {
       await deleteRecentById(recordId);
       appendReplayLog(`Deleted record #${recordId}.`, "success");
-      await loadDashboard(days, false);
+      await loadDashboard(days, listFilters, false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to delete record.";
       appendReplayLog(msg, "error");
@@ -553,7 +723,7 @@ function App() {
     try {
       const deleted = await deleteAllRecent();
       appendReplayLog(`Deleted ${deleted} records.`, "success");
-      await loadDashboard(days, false);
+      await loadDashboard(days, listFilters, false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to delete all records.";
       appendReplayLog(msg, "error");
@@ -562,11 +732,12 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
-    let firstLoadDone = false;
+    const useFullLoading = firstDashboardLoad.current;
     async function load() {
       if (!cancelled) {
-        await loadDashboard(days, !firstLoadDone);
-        if (!firstLoadDone) {
+        await loadDashboard(days, listFilters, useFullLoading);
+        if (useFullLoading) {
+          firstDashboardLoad.current = false;
           try {
             await loadMockLeads();
           } catch (err) {
@@ -574,16 +745,19 @@ function App() {
             appendReplayLog(msg, "error");
           }
         }
-        firstLoadDone = true;
       }
     }
-    load();
-    const id = setInterval(load, 10000);
+    void load();
+    const id = setInterval(() => {
+      if (!cancelled) {
+        void loadDashboard(days, listFilters, false);
+      }
+    }, 10000);
     return () => {
       cancelled = true;
       clearInterval(id);
     };
-  }, [days]);
+  }, [days, listFilters.geoMismatchOnly, listFilters.confidence, listFilters.status]);
 
   return (
     <main className="container">
@@ -610,6 +784,11 @@ function App() {
         <>
           <KpiCards summary={summary} />
           {advanced && <AdvancedPanel advanced={advanced} />}
+          <section className="charts-grid" aria-label="Analytics charts">
+            <MismatchByCcPanel items={mismatchByCc} />
+            <LlmUsageOverTimePanel points={llmTsPoints} />
+            <InvalidReasonsChartPanel items={invalidChart} />
+          </section>
           <ReplayPanel
             mockCount={mockLeads.length}
             logs={replayLogs}
@@ -626,8 +805,14 @@ function App() {
             }}
           />
           <TrendPanel points={points} />
-          <ReasonsPanel reasons={summary.reasons} />
-          <RecentPanel recent={recent} mockLeads={mockLeads} onDeleteOne={handleDeleteOne} onDeleteAll={handleDeleteAll} />
+          <RecentPanel
+            recent={recent}
+            mockLeads={mockLeads}
+            filters={listFilters}
+            onFiltersChange={setListFilters}
+            onDeleteOne={handleDeleteOne}
+            onDeleteAll={handleDeleteAll}
+          />
         </>
       )}
     </main>

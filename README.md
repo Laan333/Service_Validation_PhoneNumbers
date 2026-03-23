@@ -19,9 +19,10 @@ Full-stack сервис для CRM webhook-валидации телефонов
 1. Скопируйте env:
    - `copy .env.example .env` (Windows PowerShell)
 2. Укажите `OPENAI_API_KEY` в `.env`.
-3. Запустите:
+3. Для определения страны по IP (10-значные локальные номера): зарегистрируйтесь на [ipinfo.io/signup](https://ipinfo.io/signup), скопируйте токен в **`IPINFO_TOKEN`** (бесплатный [Lite API](https://ipinfo.io/developers/lite-api), без лимита по стране). Иначе будет использоваться только `IP_GEO_DEFAULT_COUNTRY`.
+4. Запустите:
    - `docker-compose up --build`
-4. URLs:
+5. URLs:
    - App (через Nginx): `http://localhost:8005`
    - API health (через Nginx): `http://localhost:8005/health`
 
@@ -80,9 +81,11 @@ X-Webhook-Token: <то же значение, что WEBHOOK_TOKEN>
 2. Поле тела **`VISITOR_IP`** (алиас Bitrix-поля при необходимости).
 3. Разбор **`COMMENTS`**: строка вида `IP: [b]203.0.113.1[/b]` (как в `mock.json`).
 
-Дальше backend вызывает **ipapi.co** (`https://ipapi.co/{ip}/json/`), кэширует ответ в памяти процесса на `IP_GEO_CACHE_TTL_SECONDS` (по умолчанию 24 ч). Опционально **`IPAPI_TOKEN`**. Частные/некорректные IP и ошибки API → страна по умолчанию **`IP_GEO_DEFAULT_COUNTRY`** (обычно `US`), флаг `default_cc_applied` в БД.
+Дальше backend вызывает **[IPinfo Lite](https://ipinfo.io/developers/lite-api)** (`https://api.ipinfo.io/lite/{ip}?token=…` для IPv4, для IPv6 — `https://v6.api.ipinfo.io/lite/{ip}`), кэширует ответ в памяти процесса на `IP_GEO_CACHE_TTL_SECONDS` (по умолчанию 24 ч).
 
-Переменные `.env`: `IP_GEO_ENABLED`, `IP_GEO_DEFAULT_COUNTRY`, `IP_GEO_CACHE_TTL_SECONDS`, `IP_GEO_TIMEOUT_SECONDS`, `IPAPI_TOKEN` (см. `.env.example`).
+**Регистрация обязательна:** заведите бесплатный аккаунт на [ipinfo.io/signup](https://ipinfo.io/signup), возьмите токен и пропишите в `.env` как **`IPINFO_TOKEN`**. План **Lite** даёт неограниченную геолокацию на уровне страны (и базовые ASN-поля в ответе; нам нужен только `country_code`). Без токена или при ошибке API используется **`IP_GEO_DEFAULT_COUNTRY`**, в БД выставляется `default_cc_applied`.
+
+Переменные `.env`: `IP_GEO_ENABLED`, `IP_GEO_DEFAULT_COUNTRY`, `IP_GEO_CACHE_TTL_SECONDS`, `IP_GEO_TIMEOUT_SECONDS`, **`IPINFO_TOKEN`** (см. `.env.example`).
 
 ### Форматы тела запроса
 

@@ -1,4 +1,4 @@
-"""Resolve country ISO code from client IP (ipapi.co) with in-memory TTL cache."""
+"""Resolve country ISO code via IPinfo Lite API with in-memory TTL cache."""
 
 from __future__ import annotations
 
@@ -53,22 +53,34 @@ class IpGeoService:
         return country, False
 
     async def _fetch_country(self, ip: str) -> str | None:
-        url = f"https://ipapi.co/{ip}/json/"
-        if settings.ipapi_token:
-            url = f"{url}?key={settings.ipapi_token}"
+        token = (settings.ipinfo_token or "").strip()
+        if not token:
+            logger.warning("IPINFO_TOKEN is empty; set it from https://ipinfo.io/signup (Lite API). Skipping lookup.")
+            return None
+
+        try:
+            parsed = ipaddress.ip_address(ip)
+        except ValueError:
+            logger.warning("Invalid IP for geo lookup: %s", ip)
+            return None
+
+        if parsed.version == 6:
+            url = f"https://v6.api.ipinfo.io/lite/{ip}"
+        else:
+            url = f"https://api.ipinfo.io/lite/{ip}"
+
         try:
             async with httpx.AsyncClient(timeout=settings.ip_geo_timeout_seconds) as client:
-                response = await client.get(url)
+                response = await client.get(url, params={"token": token})
                 response.raise_for_status()
                 data = response.json()
         except (httpx.HTTPError, ValueError) as exc:
-            logger.warning("IP geo lookup failed for %s: %s", ip, exc)
+            logger.warning("IPinfo Lite lookup failed for %s: %s", ip, exc)
             return None
-        if data.get("error"):
-            logger.warning("IP geo API error for %s: %s", ip, data.get("reason"))
-            return None
+
         code = data.get("country_code")
         if not isinstance(code, str) or len(code) != 2:
+            logger.warning("IPinfo Lite response missing country_code for %s: %s", ip, data)
             return None
         return code.upper()
 

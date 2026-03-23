@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     ip_geo_default_country: str = Field(default="US", alias="IP_GEO_DEFAULT_COUNTRY")
     ip_geo_cache_ttl_seconds: int = Field(default=86400, alias="IP_GEO_CACHE_TTL_SECONDS")
     ip_geo_timeout_seconds: float = Field(default=3.0, alias="IP_GEO_TIMEOUT_SECONDS")
-    ipapi_token: str = Field(default="", alias="IPAPI_TOKEN")
+    ipinfo_token: str = Field(default="", alias="IPINFO_TOKEN")
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

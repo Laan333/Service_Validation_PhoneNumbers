@@ -1,7 +1,16 @@
 import { type CSSProperties, useEffect, useMemo, useState } from "react";
 
-import { fetchMockLeads, fetchRecent, fetchSummary, fetchTimeseries, sendLeadToWebhook } from "./api";
-import type { CrmMockLead, MetricsPoint, MetricsSummary, RecentValidation, ReplayLogItem } from "./types";
+import {
+  deleteAllRecent,
+  deleteRecentById,
+  fetchMockLeads,
+  fetchRecent,
+  fetchSummary,
+  fetchTimeseries,
+  fetchAdvanced,
+  sendLeadToWebhook,
+} from "./api";
+import type { AdvancedMetrics, CrmMockLead, MetricsPoint, MetricsSummary, RecentValidation, ReplayLogItem } from "./types";
 
 function StatusPill({ status }: { status: string }) {
   return <span className={`status-pill ${status === "valid" ? "status-ok" : "status-bad"}`}>{status}</span>;
@@ -75,10 +84,76 @@ function ReasonsPanel({ reasons }: { reasons: Record<string, number> }) {
   );
 }
 
-function RecentPanel({ recent }: { recent: RecentValidation[] }) {
+function AdvancedPanel({ advanced }: { advanced: AdvancedMetrics }) {
+  const pct = (value: number) => `${(value * 100).toFixed(1)}%`;
+  return (
+    <section className="panel">
+      <h2>Advanced Analytics</h2>
+      <div className="advanced-grid">
+        <article className="mini-card">
+          <span>LLM Share</span>
+          <strong>{pct(advanced.llm_share)}</strong>
+        </article>
+        <article className="mini-card">
+          <span>LLM Success</span>
+          <strong>{pct(advanced.llm_success_rate)}</strong>
+        </article>
+        <article className="mini-card">
+          <span>Deterministic Success</span>
+          <strong>{pct(advanced.deterministic_success_rate)}</strong>
+        </article>
+        <article className="mini-card">
+          <span>Normalization Coverage</span>
+          <strong>{pct(advanced.normalization_coverage)}</strong>
+        </article>
+        <article className="mini-card">
+          <span>Invalid Share</span>
+          <strong>{pct(advanced.invalid_share)}</strong>
+        </article>
+      </div>
+      <div className="advanced-split">
+        <div>
+          <h4>Source Split</h4>
+          <ul className="reason-list">
+            {Object.entries(advanced.source_split).map(([source, count]) => (
+              <li key={source}>
+                <span>{source}</span>
+                <strong>{count}</strong>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <h4>Top Rejection Reasons</h4>
+          <ul className="reason-list">
+            {advanced.top_reasons.map((item) => (
+              <li key={item.reason}>
+                <span>{item.reason}</span>
+                <strong>{item.count}</strong>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function RecentPanel({
+  recent,
+  mockLeads,
+  onDeleteOne,
+  onDeleteAll,
+}: {
+  recent: RecentValidation[];
+  mockLeads: CrmMockLead[];
+  onDeleteOne: (id: number) => Promise<void>;
+  onDeleteAll: () => Promise<void>;
+}) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [selectedRecord, setSelectedRecord] = useState<RecentValidation | null>(null);
   const filtered = useMemo(
     () =>
       recent.filter((item) =>
@@ -120,6 +195,13 @@ function RecentPanel({ recent }: { recent: RecentValidation[] }) {
     return reason.replace(/_/g, " ");
   };
 
+  const selectedMock = useMemo(() => {
+    if (!selectedRecord) {
+      return null;
+    }
+    return mockLeads.find((lead) => String(lead.ID) === selectedRecord.lead_id) ?? null;
+  }, [mockLeads, selectedRecord]);
+
   return (
     <section className="panel">
       <div className="panel-header">
@@ -141,6 +223,9 @@ function RecentPanel({ recent }: { recent: RecentValidation[] }) {
             <option value={10}>10 rows</option>
             <option value={20}>20 rows</option>
           </select>
+          <button className="action-btn danger" disabled={filtered.length === 0} onClick={() => void onDeleteAll()}>
+            Delete all
+          </button>
         </div>
       </div>
       <div className="table-wrapper">
@@ -154,11 +239,17 @@ function RecentPanel({ recent }: { recent: RecentValidation[] }) {
               <th>Reason</th>
               <th>Source</th>
               <th>At</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {paged.map((item) => (
-              <tr key={`${item.lead_id}-${item.processed_at}`}>
+              <tr
+                key={`${item.lead_id}-${item.processed_at}`}
+                className="clickable-row"
+                onClick={() => setSelectedRecord(item)}
+                title="Click to view details"
+              >
                 <td>{item.lead_id}</td>
                 <td className="mono-cell" title={item.contact_phone_raw || "-"}>
                   {formatPhone(item.contact_phone_raw)}
@@ -174,11 +265,22 @@ function RecentPanel({ recent }: { recent: RecentValidation[] }) {
                   <span className="source-chip">{item.source}</span>
                 </td>
                 <td>{formatDate(item.processed_at)}</td>
+                <td>
+                  <button
+                    className="action-btn ghost compact danger"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void onDeleteOne(item.id);
+                    }}
+                  >
+                    Delete
+                  </button>
+                </td>
               </tr>
             ))}
             {paged.length === 0 && (
               <tr>
-                <td colSpan={7} className="empty-table">
+                <td colSpan={8} className="empty-table">
                   No rows match your current filters.
                 </td>
               </tr>
@@ -206,6 +308,61 @@ function RecentPanel({ recent }: { recent: RecentValidation[] }) {
           </button>
         </div>
       </div>
+      {selectedRecord && (
+        <div className="modal-backdrop" onClick={() => setSelectedRecord(null)}>
+          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Lead {selectedRecord.lead_id}</h3>
+              <button className="close-btn" onClick={() => setSelectedRecord(null)} aria-label="Close details">
+                ×
+              </button>
+            </div>
+            <div className="modal-grid">
+              <div>
+                <span className="meta-label">Raw phone</span>
+                <p>{selectedRecord.contact_phone_raw || "-"}</p>
+              </div>
+              <div>
+                <span className="meta-label">Normalized</span>
+                <p>{selectedRecord.normalized_phone ?? "-"}</p>
+              </div>
+              <div>
+                <span className="meta-label">Status</span>
+                <p>
+                  <StatusPill status={selectedRecord.status} />
+                </p>
+              </div>
+              <div>
+                <span className="meta-label">Reason</span>
+                <p>{prettifyReason(selectedRecord.reason)}</p>
+              </div>
+              <div>
+                <span className="meta-label">Source</span>
+                <p>{selectedRecord.source}</p>
+              </div>
+              <div>
+                <span className="meta-label">Processed at</span>
+                <p>{formatDate(selectedRecord.processed_at)}</p>
+              </div>
+            </div>
+            <div className="mock-details">
+              <h4>Mock payload</h4>
+              {selectedMock ? (
+                <div className="payload-list">
+                  {Object.entries(selectedMock).map(([key, value]) => (
+                    <div key={key} className="payload-item">
+                      <span>{key}</span>
+                      <strong>{String(value ?? "-")}</strong>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="muted-text">No matching object found in loaded mock.json for this lead id.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -261,6 +418,7 @@ function App() {
   const [summary, setSummary] = useState<MetricsSummary | null>(null);
   const [points, setPoints] = useState<MetricsPoint[]>([]);
   const [recent, setRecent] = useState<RecentValidation[]>([]);
+  const [advanced, setAdvanced] = useState<AdvancedMetrics | null>(null);
   const [days, setDays] = useState<number>(7);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -289,14 +447,16 @@ function App() {
       setRefreshing(true);
     }
     try {
-      const [summaryData, timeseriesData, recentItems] = await Promise.all([
+      const [summaryData, timeseriesData, recentItems, advancedData] = await Promise.all([
         fetchSummary(),
         fetchTimeseries(periodDays),
         fetchRecent(20),
+        fetchAdvanced(),
       ]);
       setSummary(summaryData);
       setPoints(timeseriesData);
       setRecent(recentItems);
+      setAdvanced(advancedData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unexpected dashboard error.");
     } finally {
@@ -338,6 +498,31 @@ function App() {
       appendReplayLog(msg, "error");
     } finally {
       setReplayRunning(false);
+    }
+  };
+
+  const handleDeleteOne = async (recordId: number) => {
+    try {
+      await deleteRecentById(recordId);
+      appendReplayLog(`Deleted record #${recordId}.`, "success");
+      await loadDashboard(days, false);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to delete record.";
+      appendReplayLog(msg, "error");
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    if (!window.confirm("Delete all processed records? This cannot be undone.")) {
+      return;
+    }
+    try {
+      const deleted = await deleteAllRecent();
+      appendReplayLog(`Deleted ${deleted} records.`, "success");
+      await loadDashboard(days, false);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to delete all records.";
+      appendReplayLog(msg, "error");
     }
   };
 
@@ -390,6 +575,7 @@ function App() {
       {summary && !loading && !error && (
         <>
           <KpiCards summary={summary} />
+          {advanced && <AdvancedPanel advanced={advanced} />}
           <ReplayPanel
             mockCount={mockLeads.length}
             logs={replayLogs}
@@ -407,7 +593,7 @@ function App() {
           />
           <TrendPanel points={points} />
           <ReasonsPanel reasons={summary.reasons} />
-          <RecentPanel recent={recent} />
+          <RecentPanel recent={recent} mockLeads={mockLeads} onDeleteOne={handleDeleteOne} onDeleteAll={handleDeleteAll} />
         </>
       )}
     </main>

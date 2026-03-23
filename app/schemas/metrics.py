@@ -29,6 +29,7 @@ class MetricsTimeseriesResponse(BaseModel):
 class RecentValidationItem(BaseModel):
     """Recent processed lead item."""
 
+    id: int
     lead_id: str
     contact_phone_raw: str
     normalized_phone: str | None
@@ -42,3 +43,21 @@ class RecentValidationsResponse(BaseModel):
     """Recent processed leads list."""
 
     items: list[RecentValidationItem]
+
+
+class DeleteMetricsResponse(BaseModel):
+    """Delete operation result."""
+
+    deleted: int
+
+
+class AdvancedMetricsResponse(BaseModel):
+    """Advanced dashboard analytics."""
+
+    llm_share: float
+    llm_success_rate: float
+    deterministic_success_rate: float
+    normalization_coverage: float
+    invalid_share: float
+    top_reasons: list[dict[str, int]]
+    source_split: dict[str, int]

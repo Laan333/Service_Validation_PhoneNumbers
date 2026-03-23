@@ -1,4 +1,4 @@
-import type { CrmMockLead, MetricsPoint, MetricsSummary, RecentValidation } from "./types";
+import type { AdvancedMetrics, CrmMockLead, MetricsPoint, MetricsSummary, RecentValidation } from "./types";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "";
 
@@ -26,6 +26,32 @@ export async function fetchRecent(limit = 20): Promise<RecentValidation[]> {
   }
   const data = (await response.json()) as { items: RecentValidation[] };
   return data.items;
+}
+
+export async function fetchAdvanced(): Promise<AdvancedMetrics> {
+  const response = await fetch(`${apiBase}/api/v1/metrics/advanced`);
+  if (!response.ok) {
+    throw new Error("Failed to load advanced analytics.");
+  }
+  return (await response.json()) as AdvancedMetrics;
+}
+
+export async function deleteRecentById(recordId: number): Promise<number> {
+  const response = await fetch(`${apiBase}/api/v1/metrics/recent/${recordId}`, { method: "DELETE" });
+  if (!response.ok) {
+    throw new Error(`Failed to delete record ${recordId}.`);
+  }
+  const data = (await response.json()) as { deleted: number };
+  return data.deleted;
+}
+
+export async function deleteAllRecent(): Promise<number> {
+  const response = await fetch(`${apiBase}/api/v1/metrics/recent`, { method: "DELETE" });
+  if (!response.ok) {
+    throw new Error("Failed to delete all records.");
+  }
+  const data = (await response.json()) as { deleted: number };
+  return data.deleted;
 }
 
 export async function fetchMockLeads(): Promise<CrmMockLead[]> {

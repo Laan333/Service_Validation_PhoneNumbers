@@ -14,6 +14,7 @@ export type MetricsPoint = {
 };
 
 export type RecentValidation = {
+  id: number;
   lead_id: string;
   contact_phone_raw: string;
   normalized_phone: string | null;
@@ -35,4 +36,14 @@ export type ReplayLogItem = {
   ts: string;
   message: string;
   level: "info" | "success" | "error";
+};
+
+export type AdvancedMetrics = {
+  llm_share: number;
+  llm_success_rate: number;
+  deterministic_success_rate: number;
+  normalization_coverage: number;
+  invalid_share: number;
+  top_reasons: Array<{ reason: string; count: number }>;
+  source_split: Record<string, number>;
 };

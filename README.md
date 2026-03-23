@@ -1,155 +1,128 @@
 # Phone Validator Service
 
-Full-stack сервис для CRM webhook-валидации телефонов с нормализацией в E.164, fallback-исправлением через OpenAI `gpt-4o-mini` и SPA-дашбордом с метриками.
+Сервис принимает лиды из CRM по **webhook**, нормализует телефон в **E.164** (детерминированные правила + при необходимости **OpenAI**), сохраняет результат в **PostgreSQL** и **возвращает JSON в том же HTTP-ответе**. К **SPA-дашборду** подключены метрики, графики и таблица последних обработок.
 
-## Stack
-- Backend: FastAPI + SQLAlchemy (async) + PostgreSQL
-- Frontend: React + TypeScript + Vite
-- Infra: Docker Compose
+## Внешние сервисы и регистрация
 
-## Project Structure
-- `app` - backend API, доменная логика, сервисы, репозитории.
-- `tests` - unit/integration тесты backend.
-- `pyproject.toml` - backend зависимости и инструменты качества.
-- `Dockerfile.backend` - сборка backend контейнера.
-- `frontend` - SPA дашборд метрик.
-- `docker-compose.yml` - запуск полного стека.
+Нужны **свои аккаунты** у провайдеров ниже — без ключей часть функций работает в урезанном режиме.
 
-## Quick Start
-1. Скопируйте env:
-   - `copy .env.example .env` (Windows PowerShell)
-2. Укажите `OPENAI_API_KEY` в `.env`.
-3. Для определения страны по IP (10-значные локальные номера): зарегистрируйтесь на [ipinfo.io/signup](https://ipinfo.io/signup), скопируйте токен в **`IPINFO_TOKEN`** (бесплатный [Lite API](https://ipinfo.io/developers/lite-api), без лимита по стране). Иначе будет использоваться только `IP_GEO_DEFAULT_COUNTRY`.
-4. Запустите:
-   - `docker-compose up --build`
-5. URLs:
-   - App (через Nginx): `http://localhost:8005`
-   - API health (через Nginx): `http://localhost:8005/health`
-
-Nginx поднимается автоматически как контейнер `nginx` и проксирует:
-- `/` -> `frontend:5173`
-- `/api/*` -> `backend:8000/api/*`
-
-PostgreSQL наружу не публикуется. Доступ к БД только внутри Docker-сети.
-
-## API (метрики и dev)
-
-### `GET /api/v1/metrics/summary`
-Возвращает total/valid/invalid/success_rate и breakdown причин отказа.
-
-### `GET /api/v1/metrics/timeseries?days=7`
-Возвращает динамику по дням за период.
-
-### `GET /api/v1/metrics/recent?limit=20`
-Возвращает последние обработанные лиды для таблицы на дашборде.
-
-### `GET /api/v1/dev/mock-leads` (только для дашборда / replay)
-Возвращает JSON `{"items": [...], "source_path": "<абсолютный путь>"}`. Список лидов читается из **`mock.json`** в корне репозитория (локально) или из **`/app/mock.json`** в Docker (файл монтируется из `./mock.json`). Путь к файлу **не** настраивается через `.env`.
+| Сервис | Зачем | Что сделать |
+|--------|--------|-------------|
+| **OpenAI** | LLM-fallback для «починки» номера | [platform.openai.com](https://platform.openai.com/) — API key в **`OPENAI_API_KEY`** |
+| **IPinfo** | Страна по IP для 10-значных локальных номеров | **Регистрация обязательна:** [ipinfo.io/signup](https://ipinfo.io/signup) (бесплатный план **Lite**), токен из кабинета → **`IPINFO_TOKEN`**. Без токена геолокация по IP отключается, подставляется только **`IP_GEO_DEFAULT_COUNTRY`**. |
 
 ---
 
-## CRM Webhook: `POST /api/v1/webhooks/crm/lead`
+## Содержание
 
-Единственная точка приёма лида из CRM. Сохраняет результат валидации в БД и возвращает итог наружу.
+- [Внешние сервисы и регистрация](#внешние-сервисы-и-регистрация)
+- [Стек и структура](#стек-и-структура)
+- [Быстрый старт](#быстрый-старт)
+- [CRM Webhook](#crm-webhook)
+- [API: метрики и дашборд](#api-метрики-и-дашборд)
+- [Стратегия валидации](#стратегия-валидации)
+- [Локальная разработка](#локальная-разработка)
+- [Тесты](#тесты)
+- [Миграции БД](#миграции-бд)
+- [`mock.json`](#mockjson)
+- [Безопасность](#безопасность)
 
-### Базовые URL
+---
+
+## Стек и структура
+
+| Слой | Технологии |
+|------|------------|
+| Backend | FastAPI, SQLAlchemy async, PostgreSQL, Alembic |
+| Frontend | React, TypeScript, Vite |
+| Инфра | Docker Compose, Nginx |
+
+**Каталоги**
+
+| Путь | Назначение |
+|------|------------|
+| `app/` | API, домен, сервисы, репозитории |
+| `frontend/` | дашборд метрик |
+| `tests/` | pytest (unit + integration) |
+| `migrations/` | ревизии Alembic |
+| `docker-compose.yml` | postgres, backend, frontend, nginx |
+
+---
+
+## Быстрый старт
+
+1. Скопируйте окружение: `copy .env.example .env` (Windows) или `cp .env.example .env`.
+2. В `.env` задайте **`OPENAI_API_KEY`** (нужен аккаунт OpenAI).
+3. Для реальной геолокации по IP: **зарегистрируйтесь на [IPinfo](https://ipinfo.io/signup)**, возьмите токен в дашборде и пропишите **`IPINFO_TOKEN`** ([документация Lite API](https://ipinfo.io/developers/lite-api)). Иначе IP не резолвится в страну — только дефолт **`IP_GEO_DEFAULT_COUNTRY`**.
+4. Запуск: `docker-compose up --build`
+5. Открыть UI: **http://localhost:8005** · health: **http://localhost:8005/health**
+
+Nginx: `/` → frontend, `/api/*` → backend:8000. Порт Postgres наружу не пробрасывается.
+
+---
+
+## CRM Webhook
+
+**Эндпоинт:** `POST /api/v1/webhooks/crm/lead`
 
 | Окружение | URL |
 |-----------|-----|
-| Docker Compose (через Nginx) | `http://localhost:8005/api/v1/webhooks/crm/lead` |
-| Прямой backend (без Nginx) | `http://localhost:8000/api/v1/webhooks/crm/lead` |
+| Через Compose + Nginx | `http://localhost:8005/api/v1/webhooks/crm/lead` |
+| Прямо в backend | `http://localhost:8000/api/v1/webhooks/crm/lead` |
 
-Метод: **`POST`**. Тело: **JSON** (`Content-Type: application/json`).
+Тело: **JSON**, заголовок `Content-Type: application/json`.
 
-### Аутентификация (опционально)
-
-Если в `.env` задан **`WEBHOOK_TOKEN`**, клиент **обязан** передать заголовок:
-
-```http
-X-Webhook-Token: <то же значение, что WEBHOOK_TOKEN>
+```mermaid
+sequenceDiagram
+  participant CRM
+  participant API as Phone Validator API
+  participant DB as PostgreSQL
+  CRM->>API: POST lead JSON
+  API->>API: validate + optional LLM
+  API->>DB: INSERT lead_validations
+  API-->>CRM: 200 JSON lead_id, status, normalized_phone, reason, source
 ```
 
-Если `WEBHOOK_TOKEN` пустой или не задан, заголовок не проверяется (удобно для локальной разработки).
+**Опциональная защита:** если в `.env` задан **`WEBHOOK_TOKEN`**, клиент обязан передать заголовок `X-Webhook-Token` с тем же значением. Пустой токен — проверка отключена (удобно локально).
 
-### Клиентский IP и геоконтекст
+### IP для геоконтекста
 
-Для **10-значных** локальных номеров без кода страны выбирается префикс по **стране визита** (иначе MX/BR/IN ошибочно трактовались бы как US NANP).
+Для **10 цифр без кода страны** префикс берётся из страны визита. Порядок источников IP:
 
-Приоритет извлечения IP:
+1. `X-Forwarded-For` (первый адрес)
+2. поле **`VISITOR_IP`** в JSON
+3. разбор **`COMMENTS`** (например `IP: [b]203.0.113.1[/b]`)
 
-1. Заголовок **`X-Forwarded-For`** (первый адрес в цепочке). За Nginx он уже прокидывается (`nginx/nginx.conf`).
-2. Поле тела **`VISITOR_IP`** (алиас Bitrix-поля при необходимости).
-3. Разбор **`COMMENTS`**: строка вида `IP: [b]203.0.113.1[/b]` (как в `mock.json`).
+Далее backend дергает [IPinfo Lite](https://ipinfo.io/developers/lite-api) с **`token`** в query — **без регистрации на ipinfo.io и значения `IPINFO_TOKEN` запросы к API не выполняются** (в лог пишется предупреждение, в БД — `default_cc_applied`). Остальные переменные: `IP_GEO_*` (см. `.env.example`).
 
-Дальше backend вызывает **[IPinfo Lite](https://ipinfo.io/developers/lite-api)** (`https://api.ipinfo.io/lite/{ip}?token=…` для IPv4, для IPv6 — `https://v6.api.ipinfo.io/lite/{ip}`), кэширует ответ в памяти процесса на `IP_GEO_CACHE_TTL_SECONDS` (по умолчанию 24 ч).
+### Форматы тела
 
-**Регистрация обязательна:** заведите бесплатный аккаунт на [ipinfo.io/signup](https://ipinfo.io/signup), возьмите токен и пропишите в `.env` как **`IPINFO_TOKEN`**. План **Lite** даёт неограниченную геолокацию на уровне страны (и базовые ASN-поля в ответе; нам нужен только `country_code`). Без токена или при ошибке API используется **`IP_GEO_DEFAULT_COUNTRY`**, в БД выставляется `default_cc_applied`.
+Поддерживаются плоский объект Bitrix и обёртки `FIELDS` / `data` (в т.ч. JSON-строка в `FIELDS`). Обязателен **`ID`**; для телефона используется **`CONTACT_PHONE`**.
 
-Переменные `.env`: `IP_GEO_ENABLED`, `IP_GEO_DEFAULT_COUNTRY`, `IP_GEO_CACHE_TTL_SECONDS`, `IP_GEO_TIMEOUT_SECONDS`, **`IPINFO_TOKEN`** (см. `.env.example`).
-
-### Форматы тела запроса
-
-Поддерживаются **два** варианта (после нормализации оба превращаются в одну плоскую модель с полями Bitrix).
-
-**1. Плоский объект** (как строки в корневом массиве `mock.json`):
+**Пример плоского объекта:**
 
 ```json
 {
   "ID": "190301",
   "TITLE": "New deal from James Carter",
-  "STAGE_ID": "NEW",
-  "CURRENCY_ID": "USD",
-  "CONTACT_ID": "821001",
-  "CONTACT_NAME": "James Carter",
-  "CONTACT_EMAIL": "james@example.com",
   "CONTACT_PHONE": "(714) 883-9188",
-  "SOURCE_ID": "WEB",
-  "COMMENTS": "многострочный текст с \\n допускается",
-  "UTM_SOURCE": "google",
-  "UTM_MEDIUM": "cpc",
-  "UTM_CAMPAIGN": "{01_Performance_Elementary_tCPA}",
-  "UTM_CONTENT": "{Elementary}",
+  "COMMENTS": "utm…",
   "DATE_CREATE": "2026-01-05T10:12:00+03:00"
 }
 ```
 
-**2. Обёртка Bitrix** (`FIELDS` — объект или JSON-строка с объектом):
+Обёртка Bitrix: объект `FIELDS` или вложенность `data.FIELDS` (в т.ч. строка JSON). Неизвестные ключи верхнего уровня плоского объекта **игнорируются**.
 
-```json
-{
-  "FIELDS": {
-    "ID": "190301",
-    "CONTACT_PHONE": "+12025551234",
-    "TITLE": "Deal"
-  }
-}
-```
-
-или вложенно:
-
-```json
-{
-  "event": "ONCRMLEADADD",
-  "data": {
-    "FIELDS": "{\"ID\":\"190301\",\"CONTACT_PHONE\":\"4155552671\"}"
-  }
-}
-```
-
-Неизвестные ключи на верхнем уровне плоского объекта **игнорируются** (`extra="ignore"` в Pydantic).
-
-### Поля (имена как в CRM)
+**Поля (имена как в CRM)**
 
 | JSON-ключ | Назначение | Обязательность |
 |-----------|------------|----------------|
-| `ID` | Идентификатор лида/сделки | **Да** (после приведения к строке допускается число в JSON) |
-| `CONTACT_PHONE` | Сырой телефон | Нет; пустая строка эквивалентна отсутствию номера |
-| `VISITOR_IP` | Явный IPv4 клиента | Нет; если нет — берётся `X-Forwarded-For` или IP из `COMMENTS` |
-| `TITLE`, `STAGE_ID`, `CURRENCY_ID`, `CONTACT_ID`, `CONTACT_NAME`, `CONTACT_EMAIL`, `SOURCE_ID`, `COMMENTS`, `UTM_*`, `DATE_CREATE` | Метаданные / UTM / комментарий | Нет; используются для совместимости с реальным webhook |
+| `ID` | Идентификатор лида | **Да** (в JSON может быть число, внутри станет строкой) |
+| `CONTACT_PHONE` | Сырой телефон | Нет; пустая строка = нет номера |
+| `VISITOR_IP` | Явный IP клиента | Нет; иначе `X-Forwarded-For` или разбор `COMMENTS` |
+| Остальное (`TITLE`, `STAGE_ID`, `UTM_*`, `COMMENTS`, `DATE_CREATE`, …) | Совместимость с реальным webhook | Нет |
 
-Логика нормализации использует в первую очередь **`ID`** и **`CONTACT_PHONE`**.
-
-### Успешный ответ `200 OK`
+**Ответ `200 OK`:**
 
 ```json
 {
@@ -161,21 +134,13 @@ X-Webhook-Token: <то же значение, что WEBHOOK_TOKEN>
 }
 ```
 
-- `status`: `"valid"` или `"invalid"` (строго в нижнем регистре).
-- `normalized_phone`: E.164 с `+` при успехе, иначе `null`.
-- `reason`: машинный код отказа при `invalid`, иначе `null` (см. доменные enum’ы в `app/domain/enums.py`).
-- `source`: `"deterministic"` или `"llm"` — какой путь дал итог.
+Поля: `status` — `valid` | `invalid`; `normalized_phone` — E.164 при успехе; `reason` — код отказа при `invalid`; `source` — `deterministic` | `llm`.
 
-### Ошибки
+**Ошибки:** `401` — неверный/отсутствующий webhook-токен; `422` — схема/JSON.
 
-| Код | Когда |
-|-----|--------|
-| `401` | Задан `WEBHOOK_TOKEN`, но заголовок `X-Webhook-Token` отсутствует или неверен. |
-| `422` | Невалидный JSON или тело не укладывается в схему после разворачивания `FIELDS` (детали в `detail` от FastAPI/Pydantic). |
+**Важно:** сервис **не вызывает CRM повторно** — Bitrix/outbound-сценарий должен сам прочитать **тело ответа** и обновить поле телефона.
 
 ### Примеры вызова
-
-**curl (bash / Git Bash), без токена:**
 
 ```bash
 curl -sS -X POST "http://localhost:8005/api/v1/webhooks/crm/lead" \
@@ -183,90 +148,117 @@ curl -sS -X POST "http://localhost:8005/api/v1/webhooks/crm/lead" \
   -d "{\"ID\":\"190301\",\"TITLE\":\"Test\",\"CONTACT_PHONE\":\"(714) 883-9188\"}"
 ```
 
-**PowerShell:**
-
 ```powershell
 $body = '{"ID":"190301","TITLE":"Test","CONTACT_PHONE":"(714) 883-9188"}'
-Invoke-RestMethod -Uri "http://localhost:8005/api/v1/webhooks/crm/lead" -Method Post -ContentType "application/json" -Body $body
+Invoke-RestMethod -Uri "http://localhost:8005/api/v1/webhooks/crm/lead" `
+  -Method Post -ContentType "application/json" -Body $body
 ```
 
-**С токеном:**
+### Как проверить вебхук
 
-```bash
-curl -sS -X POST "http://localhost:8005/api/v1/webhooks/crm/lead" \
-  -H "Content-Type: application/json" \
-  -H "X-Webhook-Token: your_secret" \
-  -d "{\"ID\":\"1\",\"CONTACT_PHONE\":\"4155552671\"}"
-```
-
-### Как протестировать вебхук
-
-1. **Автотесты (рекомендуется)** — тела запросов зашиты в коде тестов, `.env` для `mock.json` не нужен:
-   ```bash
-   pip install -e ".[dev]"
-   pytest tests/integration/test_webhook.py tests/unit/test_crm_payload.py -q
-   ```
-   Покрыто: плоское тело, полный Bitrix-набор полей, обёртка `FIELDS`, проверка `401` при включённом `WEBHOOK_TOKEN`.
-
-2. **Живой стек Docker** — поднимите `docker-compose up --build`, затем выполните один из `curl` / `Invoke-RestMethod` выше против `http://localhost:8005/...`. Убедитесь, что `WEBHOOK_TOKEN` в `.env` совпадает с заголовком (или оставьте токен пустым).
-
-3. **Дашборд Mock Replay** — на `http://localhost:8005` блок **Mock Replay**: загружает лиды из **`mock.json`** (через `GET /api/v1/dev/mock-leads`) и по очереди шлёт **тот же JSON** на `POST .../webhooks/crm/lead`. Это эквивалентно ручному вызову вебхука для каждой записи в файле.
-
-Работоспособность вебхука в репозитории обеспечивается указанными тестами; при изменении схемы тела запускайте `pytest` перед деплоем.
+1. **pytest:** `pip install -e ".[dev]"` → `pytest tests/integration/test_webhook.py tests/unit/test_crm_payload.py -q`
+2. **Живой Docker** + `curl` / PowerShell выше.
+3. В UI блок **Mock Replay** шлёт лиды из `mock.json` на тот же URL.
 
 ---
 
-## Validation Strategy
-1. **Deterministic stage** (`DeterministicPhoneValidator`):
-   - пустые/короткие/слишком длинные строки, нецифровой мусор, все одинаковые цифры
-   - **Лишняя ведущая «1» (US trunk)**: длинные строки вида `+1393…` → нормализация в `+393…` (и аналогично для `52`, `55`, `44`, …)
-   - **10 цифр без кода**: по **ISO страны из IP** подставляется CC (`MX`→52, `BR`→55, `IN`→91, `IT`→39, `RU`→7, …). Для **`US`/`CA`** применяется правило **NANP** (код города и офиса не начинаются с `0`/`1`) → `+1`
-   - **Россия, внутренний «8»**: 11 цифр, начало `89…` (моб.) или `880…` (напр. 8-800) → замена ведущей `8` на `+7` и дальше 10 национальных цифр; при IP не из RU в дашборде может отображаться `geo_mismatch`
-   - известные коды стран (в т.ч. `+7`, `+44`, `+52`, …) для номеров уже с цифрами страны без `+`
-   - номера с `+` и известным CC → E.164
-   - **исключение**: последовательности `0123456789` / `9876543210` не получают авто-локального CC (оставляются на LLM / отказ)
-2. **LLM stage** (`gpt-4o-mini`):
-   - только если deterministic вернул `recoverable` (например неоднозначный 10-значный, не NANP)
-   - structured JSON, retry до 3 раз, затем снова deterministic-проверка ответа
-3. **Post-LLM fallback**: если LLM не дал валидный номер, ещё раз пробуется NANP `+1` **только** при геоконтексте US/CA (или дефолтная страна из `.env` — US/CA), кроме «лестничных» последовательностей.
+## API: метрики и дашборд
 
-В таблице **Latest Processed Leads** на дашборде: страна по IP, предполагаемый CC, признак mismatch, уровень confidence, флаг «применён дефолтный CC».
+| Метод | Путь | Описание |
+|--------|------|----------|
+| GET | `/api/v1/metrics/summary` | Всего / valid / invalid / success_rate, словарь причин |
+| GET | `/api/v1/metrics/timeseries?days=7` | Динамика valid/invalid по дням |
+| GET | `/api/v1/metrics/recent` | Последние записи (см. query ниже) |
+| GET | `/api/v1/metrics/advanced` | LLM share, top reasons, source split |
+| GET | `/api/v1/metrics/chart/mismatch-by-cc` | Mismatch по `assumed_dial_cc` (`days`, `limit`) |
+| GET | `/api/v1/metrics/chart/llm-timeseries?days=7` | Доля deterministic vs LLM по дням |
+| GET | `/api/v1/metrics/chart/invalid-reasons` | Распределение причин только для `invalid` (`days`) |
+| DELETE | `/api/v1/metrics/recent/{id}` | Удалить запись |
+| DELETE | `/api/v1/metrics/recent` | Удалить все |
+| GET | `/api/v1/dev/mock-leads` | Лиды из `mock.json` + `source_path` (путь не настраивается через env) |
 
-## Local Development
-Backend:
-- `pip install -e .[dev]`
-- `alembic upgrade head`
-- `uvicorn app.main:app --reload`
+**`GET /api/v1/metrics/recent` — query-параметры**
 
-Frontend:
-- `cd frontend`
-- `npm install`
-- `npm run dev`
+| Параметр | Описание |
+|----------|----------|
+| `limit` | 1…500, по умолчанию 20 |
+| `geo_mismatch_only=true` | Только строки с несовпадением гео и CC номера |
+| `confidence` | `deterministic` или `llm` |
+| `status` | `valid` или `invalid` |
 
-## Tests
-- Весь backend: `pytest`
-- Вебхук, нормализация CRM JSON и валидатор: `pytest tests/integration/test_webhook.py tests/unit/test_crm_payload.py tests/unit/test_deterministic_validator.py tests/unit/test_pipeline.py`
+Период **`days`** в графиках совпадает с выбором «Last N days» в шапке дашборда.
 
-## Database Migrations (Alembic)
-- Миграции находятся в `migrations/versions`.
-- В Docker backend контейнер автоматически выполняет `alembic upgrade head` перед запуском API.
-- Если БД еще не готова, backend делает retry миграций (`DB_WAIT_MAX_ATTEMPTS`, `DB_WAIT_SLEEP_SECONDS`).
-- Локально:
-  - Применить: `alembic upgrade head`
-  - Откат на 1 шаг: `alembic downgrade -1`
-  - Создать ревизию: `alembic revision -m "your_change"`
+---
 
-### Existing external DB
-Если у вас уже есть PostgreSQL, укажите внешний `DATABASE_URL` в `.env` (например, хост managed БД).
-В этом режиме backend подключится к внешней БД, а встроенный контейнер `postgres` можно не использовать.
+## Стратегия валидации
 
-## Файл `mock.json`
+1. **Детерминированно** (`DeterministicPhoneValidator`): пустые/короткие/длинные строки, нецифры, повтор одной цифры; лишняя ведущая `1` перед чужим CC (`+1393…` → `+393…`); 10 цифр без `+` — CC из гео (NANP для US/CA и т.д.); RU «8…» → `+7…`; известные CC; последовательности `0123456789` / `9876543210` не получают авто-CC (LLM или отказ).
+2. **LLM** (`gpt-4o-mini`): только если результат recoverable; JSON + retry; повторная проверка E.164.
+3. **Post-LLM NANP `+1`**: только при геоконтексте US/CA (или дефолт из `.env`), не для «лестничных» 10 цифр.
 
-- В корне репозитория: массив объектов лида в формате Bitrix (те же ключи, что в примере вебхука выше), либо поддерживаемые обёртки (`items` / `leads` / `data` — см. `app/utils/crm_payload.py`).
-- В Docker: `./mock.json` монтируется в контейнер как **`/app/mock.json`** (`read-only`). Backend ищет файл по пути рядом с пакетом `app` или по `/app/mock.json`. **Переменных окружения для пути к моку нет.**
-- Дашборд **Mock Replay** и `GET /api/v1/dev/mock-leads` используют только этот файл.
+В таблице дашборда: страна по IP, предполагаемый CC, mismatch, confidence, флаг дефолтного CC.
 
-## Security and Maintainability
-- Конфигурация и секреты через env, без hardcode.
-- Строгие Pydantic-схемы для входа/выхода.
-- OOP/SOLID разбиение на слои: API / services / repositories / domain.
+---
+
+## Локальная разработка
+
+**Backend**
+
+```bash
+pip install -e ".[dev]"
+alembic upgrade head
+uvicorn app.main:app --reload
+```
+
+**Frontend**
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+---
+
+## Тесты
+
+```bash
+pytest
+```
+
+Точечно: `pytest tests/integration/test_webhook.py tests/unit/test_crm_payload.py tests/unit/test_deterministic_validator.py tests/unit/test_pipeline.py`
+
+---
+
+## Миграции БД
+
+- Ревизии: `migrations/versions/`
+- В Docker backend перед стартом выполняет `alembic upgrade head` (retry: `DB_WAIT_MAX_ATTEMPTS`, `DB_WAIT_SLEEP_SECONDS` в `.env`).
+- Локально: `alembic upgrade head` · `alembic downgrade -1` · `alembic revision -m "msg"`
+
+**Внешняя PostgreSQL:** задайте `DATABASE_URL` в `.env`; контейнер `postgres` в compose можно не использовать.
+
+---
+
+## `mock.json`
+
+**Где лежит:** файл в **корне репозитория** рядом с каталогом `app/`. В Docker тот же файл монтируется в **`/app/mock.json`** (read-only в `docker-compose.yml`). Путь через `.env` **не** задаётся: backend ищет `mock.json` сначала от корня проекта (как при локальном запуске), затем fallback **`/app/mock.json`**.
+
+**Корень JSON** (парсит `extract_leads_from_mock_json_root` в `app/utils/crm_payload.py`):
+
+| Корень файла | Содержимое |
+|--------------|------------|
+| Массив `[{...}, ...]` | Список лидов (**так сейчас в репозитории** — объекты с полями Bitrix: `ID`, `CONTACT_PHONE`, `COMMENTS`, `UTM_*`, …) |
+| `{"items": [...]}` / `{"leads": [...]}` / `{"records": [...]}` | Массив лидов внутри ключа |
+| `{"data": [...]}` | Массив лидов в `data` |
+| `{"data": {"FIELDS": {...}}}` | Один лид (объект полей как в webhook) |
+
+В **`COMMENTS`** в примерах из репозитория часто есть строка **`IP: [b]…[/b]`** — её использует webhook для извлечения IP, если нет `VISITOR_IP` и `X-Forwarded-For`.
+
+---
+
+## Безопасность
+
+- Секреты и конфиг только через **env** (шаблон — `.env.example`).
+- Вход/выход вебхука — **Pydantic**.
+- Слои: API → services → repositories → domain.

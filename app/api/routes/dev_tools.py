@@ -10,12 +10,13 @@ router = APIRouter(prefix="/api/v1/dev", tags=["dev"])
 
 
 def _resolve_mock_path() -> Path:
+    """Prefer mock.json next to process cwd (project root when WORKDIR is /app), then Docker path."""
+    cwd_path = Path.cwd() / "mock.json"
     docker_path = Path("/app/mock.json")
-    local_path = Path.cwd() / "mock.json"
+    if cwd_path.exists():
+        return cwd_path
     if docker_path.exists():
         return docker_path
-    if local_path.exists():
-        return local_path
     raise FileNotFoundError("mock.json not found.")
 
 

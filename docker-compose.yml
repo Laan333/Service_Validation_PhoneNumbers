@@ -27,6 +27,8 @@ services:
       OPENAI_TIMEOUT_SECONDS: ${OPENAI_TIMEOUT_SECONDS:-20}
       APP_ENV: ${APP_ENV:-development}
       WEBHOOK_TOKEN: ${WEBHOOK_TOKEN:-}
+      PUBLIC_HOST: ${PUBLIC_HOST:-localhost}
+      NGINX_PORT: ${NGINX_PORT:-8005}
   frontend:
     build:
       context: ./frontend

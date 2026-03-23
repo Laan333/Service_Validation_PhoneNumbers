@@ -36,6 +36,18 @@ def test_webhook_returns_validation_payload() -> None:
     app.dependency_overrides.clear()
 
 
+def test_webhook_accepts_fields_envelope() -> None:
+    app.dependency_overrides[get_pipeline] = lambda: FakePipeline()
+    client = TestClient(app)
+    response = client.post(
+        "/api/v1/webhooks/crm/lead",
+        json={"FIELDS": {"ID": "190301", "CONTACT_PHONE": "4155552671", "TITLE": "Wrapped"}},
+    )
+    assert response.status_code == 200
+    assert response.json()["lead_id"] == "190301"
+    app.dependency_overrides.clear()
+
+
 def test_webhook_accepts_full_bitrix_style_payload() -> None:
     """Payload matches ``mock.json`` object shape (all UPPER_SNAKE aliases)."""
     app.dependency_overrides[get_pipeline] = lambda: FakePipeline()

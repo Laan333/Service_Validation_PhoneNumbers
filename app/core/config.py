@@ -1,4 +1,4 @@
-from pydantic import Field, field_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,22 +13,8 @@ class Settings(BaseSettings):
     webhook_token: str = Field(default="", alias="WEBHOOK_TOKEN")
     public_host: str = Field(default="localhost", alias="PUBLIC_HOST")
     nginx_port: int = Field(default=8005, alias="NGINX_PORT")
-    mock_json_path: str = Field(
-        default="",
-        alias="MOCK_JSON_PATH",
-        description="Optional absolute path to mock.json; if relative, resolved from repo root (parent of app package).",
-    )
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
-
-    @field_validator("mock_json_path", mode="before")
-    @classmethod
-    def normalize_mock_json_path(cls, value: object) -> str:
-        """Strip whitespace and optional surrounding quotes from .env values."""
-        if value is None:
-            return ""
-        text = str(value).strip().strip('"').strip("'").strip()
-        return text
 
 
 settings = Settings()

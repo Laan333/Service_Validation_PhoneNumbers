@@ -29,8 +29,6 @@ services:
       WEBHOOK_TOKEN: ${WEBHOOK_TOKEN:-}
       PUBLIC_HOST: ${PUBLIC_HOST:-localhost}
       NGINX_PORT: ${NGINX_PORT:-8005}
-      # Path inside container; leave empty to use repo-root mock.json next to the app package.
-      MOCK_JSON_PATH: ${MOCK_JSON_PATH:-}
     volumes:
       - ./mock.json:/app/mock.json:ro
   frontend:

@@ -6,9 +6,10 @@ from app.domain.enums import ValidationStatus
 
 
 class CrmLeadPayload(BaseModel):
-    """Bitrix24-style CRM lead body (same shape as ``mock.json``).
+    """Bitrix24-style CRM lead body (same field set as ``mock.json`` objects).
 
-    Validation uses ``ID`` and ``CONTACT_PHONE``; other fields are accepted for parity with real webhooks.
+    Pipeline uses ``ID`` and ``CONTACT_PHONE`` only; other fields are stored in the model for parity
+    with real webhooks. Multiline ``COMMENTS`` and empty ``CONTACT_PHONE`` are allowed.
     """
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore")

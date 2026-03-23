@@ -10,6 +10,27 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+LLM_SYSTEM_PROMPT = """
+You are a strict phone normalization assistant.
+Your only task is to recover a single phone number to E.164 when possible.
+
+Hard rules:
+1) Output ONLY valid JSON object, no prose.
+2) Never invent missing digits.
+3) normalized_phone must be either:
+   - E.164 format: plus sign + digits only, total 8..15 digits after plus
+   - null if not confidently recoverable
+4) Remove spaces, dashes, brackets, dots and other separators.
+5) Fix obvious duplicated country code prefixes if unambiguous.
+6) If input is ambiguous (multiple country interpretations) or nonsense, set normalized_phone to null and recoverable to false.
+7) If number can be plausibly repaired without guessing, set recoverable to true.
+
+Return keys exactly:
+- normalized_phone
+- recoverable
+- reason
+""".strip()
+
 
 class LlmCorrectionResult(BaseModel):
     """Expected structured output from LLM correction."""
@@ -42,8 +63,19 @@ class OpenAiLlmCorrector:
         schema_hint = {
             "normalized_phone": "E.164 string with leading plus, or null",
             "recoverable": "boolean",
-            "reason": "short machine-readable reason",
+            "reason": (
+                "machine-readable reason, one of: "
+                "already_e164, stripped_formatting, added_plus, fixed_duplicate_country_code, "
+                "impossible_input, ambiguous_country, invalid_length, invalid_characters"
+            ),
         }
+
+        user_prompt = (
+            "Normalize this phone candidate to E.164 if possible.\n"
+            f"input_phone: {raw_phone}\n"
+            f"output_schema: {json.dumps(schema_hint)}\n"
+            "Important: return only JSON object."
+        )
 
         payload = {
             "model": self._model,
@@ -51,14 +83,11 @@ class OpenAiLlmCorrector:
             "messages": [
                 {
                     "role": "system",
-                    "content": (
-                        "You normalize phone numbers. Output only JSON object. "
-                        "If impossible, set normalized_phone to null and recoverable false."
-                    ),
+                    "content": LLM_SYSTEM_PROMPT,
                 },
                 {
                     "role": "user",
-                    "content": f"Repair phone: {raw_phone}. Target schema: {json.dumps(schema_hint)}",
+                    "content": user_prompt,
                 },
             ],
             "temperature": 0,

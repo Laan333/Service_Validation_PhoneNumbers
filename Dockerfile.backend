@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir .
 COPY app /app/app
 COPY migrations /app/migrations
 COPY alembic.ini /app/alembic.ini
+COPY mock.json /app/mock.json
 COPY scripts/backend-entrypoint.sh /app/scripts/backend-entrypoint.sh
 RUN chmod +x /app/scripts/backend-entrypoint.sh
 

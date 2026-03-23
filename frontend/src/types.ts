@@ -22,3 +22,17 @@ export type RecentValidation = {
   source: string;
   processed_at: string;
 };
+
+export type CrmMockLead = {
+  ID: string;
+  TITLE?: string;
+  CONTACT_PHONE?: string;
+  DATE_CREATE?: string;
+  [key: string]: unknown;
+};
+
+export type ReplayLogItem = {
+  ts: string;
+  message: string;
+  level: "info" | "success" | "error";
+};

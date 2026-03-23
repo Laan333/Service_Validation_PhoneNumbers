@@ -1,7 +1,7 @@
 import { type CSSProperties, useEffect, useMemo, useState } from "react";
 
 import { fetchMockLeads, fetchRecent, fetchSummary, fetchTimeseries, sendLeadToWebhook } from "./api";
-import type { MetricsPoint, MetricsSummary, RecentValidation, ReplayLogItem } from "./types";
+import type { CrmMockLead, MetricsPoint, MetricsSummary, RecentValidation, ReplayLogItem } from "./types";
 
 function StatusPill({ status }: { status: string }) {
   return <span className={`status-pill ${status === "valid" ? "status-ok" : "status-bad"}`}>{status}</span>;
@@ -211,21 +211,28 @@ function RecentPanel({ recent }: { recent: RecentValidation[] }) {
 }
 
 function ReplayPanel({
+  mockCount,
   logs,
   running,
   onRun,
   onClear,
+  onReloadMock,
 }: {
+  mockCount: number;
   logs: ReplayLogItem[];
   running: boolean;
   onRun: () => Promise<void>;
   onClear: () => void;
+  onReloadMock: () => Promise<void>;
 }) {
   return (
     <section className="panel">
       <div className="panel-header">
         <h2>Mock Replay (Webhook)</h2>
         <div className="button-row">
+          <button className="action-btn ghost" disabled={running} onClick={() => void onReloadMock()}>
+            Reload mock.json
+          </button>
           <button className="action-btn" disabled={running} onClick={() => void onRun()}>
             {running ? "Running..." : "Run Mock Replay"}
           </button>
@@ -235,7 +242,7 @@ function ReplayPanel({
         </div>
       </div>
       <p className="panel-subtitle">
-        Sends leads from `mock.json` to webhook one by one and prints detailed live events.
+        Sends leads from `mock.json` to webhook one by one and prints detailed live events. Loaded leads: {mockCount}.
       </p>
       <div className="log-box">
         {logs.length === 0 && <div className="log-line">No replay events yet.</div>}
@@ -256,20 +263,31 @@ function App() {
   const [recent, setRecent] = useState<RecentValidation[]>([]);
   const [days, setDays] = useState<number>(7);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [replayRunning, setReplayRunning] = useState(false);
   const [replayLogs, setReplayLogs] = useState<ReplayLogItem[]>([]);
+  const [mockLeads, setMockLeads] = useState<CrmMockLead[]>([]);
 
   const appendReplayLog = (message: string, level: ReplayLogItem["level"] = "info") => {
     const item: ReplayLogItem = { ts: new Date().toLocaleTimeString(), message, level };
     setReplayLogs((prev) => [item, ...prev].slice(0, 120));
   };
 
+  const loadMockLeads = async () => {
+    const leads = await fetchMockLeads();
+    setMockLeads(leads);
+    appendReplayLog(`mock.json loaded: ${leads.length} leads available.`, "info");
+    return leads;
+  };
+
   const loadDashboard = async (periodDays: number, keepLoadingState = true) => {
     if (keepLoadingState) {
       setLoading(true);
+      setRefreshing(false);
+    } else {
+      setRefreshing(true);
     }
-    setError(null);
     try {
       const [summaryData, timeseriesData, recentItems] = await Promise.all([
         fetchSummary(),
@@ -284,15 +302,17 @@ function App() {
     } finally {
       if (keepLoadingState) {
         setLoading(false);
+      } else {
+        setRefreshing(false);
       }
     }
   };
 
   const runMockReplay = async () => {
     setReplayRunning(true);
-    appendReplayLog("Loading mock leads from backend...", "info");
+    appendReplayLog("Preparing leads from mock.json...", "info");
     try {
-      const leads = await fetchMockLeads();
+      const leads = mockLeads.length > 0 ? mockLeads : await loadMockLeads();
       appendReplayLog(`Loaded ${leads.length} leads. Starting webhook replay...`, "info");
       for (let i = 0; i < leads.length; i += 1) {
         const lead = leads[i];
@@ -323,9 +343,19 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
+    let firstLoadDone = false;
     async function load() {
       if (!cancelled) {
-        await loadDashboard(days, true);
+        await loadDashboard(days, !firstLoadDone);
+        if (!firstLoadDone) {
+          try {
+            await loadMockLeads();
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : "Failed to preload mock.json.";
+            appendReplayLog(msg, "error");
+          }
+        }
+        firstLoadDone = true;
       }
     }
     load();
@@ -342,6 +372,7 @@ function App() {
         <div>
           <h1>Phone Validator Dashboard</h1>
           <p>Live visibility over CRM phone quality and validation outcomes.</p>
+          {refreshing && <span className="live-indicator">Updating data...</span>}
         </div>
         <section className="controls">
           <label htmlFor="days">Period</label>
@@ -359,7 +390,21 @@ function App() {
       {summary && !loading && !error && (
         <>
           <KpiCards summary={summary} />
-          <ReplayPanel logs={replayLogs} running={replayRunning} onRun={runMockReplay} onClear={() => setReplayLogs([])} />
+          <ReplayPanel
+            mockCount={mockLeads.length}
+            logs={replayLogs}
+            running={replayRunning}
+            onRun={runMockReplay}
+            onClear={() => setReplayLogs([])}
+            onReloadMock={async () => {
+              try {
+                await loadMockLeads();
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : "Failed to reload mock.json.";
+                appendReplayLog(msg, "error");
+              }
+            }}
+          />
           <TrendPanel points={points} />
           <ReasonsPanel reasons={summary.reasons} />
           <RecentPanel recent={recent} />

@@ -38,6 +38,17 @@ body {
   color: #aeb9db;
 }
 
+.live-indicator {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid #3b549b;
+  background: rgba(44, 67, 129, 0.35);
+  color: #b7cbff;
+  font-size: 0.78rem;
+}
+
 .controls {
   display: flex;
   gap: 8px;

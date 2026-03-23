@@ -433,10 +433,10 @@ function App() {
   };
 
   const loadMockLeads = async () => {
-    const leads = await fetchMockLeads();
-    setMockLeads(leads);
-    appendReplayLog(`mock.json loaded: ${leads.length} leads available.`, "info");
-    return leads;
+    const { items, sourcePath } = await fetchMockLeads();
+    setMockLeads(items);
+    appendReplayLog(`Loaded ${items.length} leads from ${sourcePath}`, "info");
+    return items;
   };
 
   const loadDashboard = async (periodDays: number, keepLoadingState = true) => {

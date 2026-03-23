@@ -1,4 +1,4 @@
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,6 +20,15 @@ class Settings(BaseSettings):
     )
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    @field_validator("mock_json_path", mode="before")
+    @classmethod
+    def normalize_mock_json_path(cls, value: object) -> str:
+        """Strip whitespace and optional surrounding quotes from .env values."""
+        if value is None:
+            return ""
+        text = str(value).strip().strip('"').strip("'").strip()
+        return text
 
 
 settings = Settings()

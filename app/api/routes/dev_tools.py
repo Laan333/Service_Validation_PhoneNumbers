@@ -4,11 +4,19 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/dev", tags=["dev"])
+
+
+class MockLeadsResponse(BaseModel):
+    """Mock CRM payloads for replay plus resolved file path (for debugging)."""
+
+    items: list[dict[str, Any]]
+    source_path: str = Field(description="Absolute path of the JSON file that was read.")
 
 
 def _repo_root() -> Path:
@@ -33,18 +41,19 @@ def _resolve_mock_path() -> Path:
     raise FileNotFoundError("mock.json not found.")
 
 
-@router.get("/mock-leads")
-async def get_mock_leads() -> dict[str, list[dict[str, Any]]]:
+@router.get("/mock-leads", response_model=MockLeadsResponse)
+async def get_mock_leads() -> MockLeadsResponse:
     """Return mock leads for replay testing from the official mock payload file."""
     try:
         path = _resolve_mock_path()
+        resolved = str(path.resolve())
         with path.open("r", encoding="utf-8") as file_obj:
             payload = json.load(file_obj)
         if not isinstance(payload, list):
             raise ValueError("mock.json root value must be a list.")
         typed_payload = [item for item in payload if isinstance(item, dict)]
-        logger.info("Loaded %s mock leads from %s", len(typed_payload), path)
-        return {"items": typed_payload}
+        logger.info("Loaded %s mock leads from %s", len(typed_payload), resolved)
+        return MockLeadsResponse(items=typed_payload, source_path=resolved)
     except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
         logger.exception("Failed to load mock leads: %s", exc)
         raise HTTPException(status_code=500, detail="Unable to load mock leads for replay.") from exc

@@ -16,7 +16,7 @@ async def handle_crm_lead(
     pipeline: Annotated[PhoneValidationPipeline, Depends(get_pipeline)],
 ) -> WebhookValidationResponse:
     """Process incoming CRM lead payload."""
-    result = await pipeline.process(payload.id, payload.contact_phone)
+    result = await pipeline.process(payload.id, payload.contact_phone or "")
     return WebhookValidationResponse(
         lead_id=payload.id,
         status=result.status,

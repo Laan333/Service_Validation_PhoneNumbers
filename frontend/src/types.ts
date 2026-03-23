@@ -24,12 +24,23 @@ export type RecentValidation = {
   processed_at: string;
 };
 
+/** Same fields as ``mock.json`` / Bitrix-style webhook body. */
 export type CrmMockLead = {
   ID: string;
   TITLE?: string;
+  STAGE_ID?: string;
+  CURRENCY_ID?: string;
+  CONTACT_ID?: string;
+  CONTACT_NAME?: string;
+  CONTACT_EMAIL?: string;
   CONTACT_PHONE?: string;
+  SOURCE_ID?: string;
+  COMMENTS?: string;
+  UTM_SOURCE?: string;
+  UTM_MEDIUM?: string;
+  UTM_CAMPAIGN?: string;
+  UTM_CONTENT?: string;
   DATE_CREATE?: string;
-  [key: string]: unknown;
 };
 
 export type ReplayLogItem = {

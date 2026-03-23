@@ -54,13 +54,13 @@ export async function deleteAllRecent(): Promise<number> {
   return data.deleted;
 }
 
-export async function fetchMockLeads(): Promise<CrmMockLead[]> {
+export async function fetchMockLeads(): Promise<{ items: CrmMockLead[]; sourcePath: string }> {
   const response = await fetch(`${apiBase}/api/v1/dev/mock-leads`);
   if (!response.ok) {
     throw new Error("Failed to load mock leads.");
   }
-  const data = (await response.json()) as { items: CrmMockLead[] };
-  return data.items;
+  const data = (await response.json()) as { items: CrmMockLead[]; source_path: string };
+  return { items: data.items, sourcePath: data.source_path };
 }
 
 export async function sendLeadToWebhook(payload: CrmMockLead): Promise<{

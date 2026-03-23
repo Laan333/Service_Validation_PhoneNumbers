@@ -199,16 +199,17 @@ curl -sS -X POST "http://localhost:8005/api/v1/webhooks/crm/lead" \
 ---
 
 ## Validation Strategy
-1. Deterministic stage:
-   - пустые/короткие/слишком длинные значения
-   - нечисловые и повторяющиеся значения
-   - базовая проверка country code
-   - нормализация к E.164
-2. LLM stage (`gpt-4o-mini`):
-   - только для recoverable кейсов
-   - structured JSON output
-   - retry до 3 попыток
-   - обязательная post-validation детерминированным валидатором
+1. **Deterministic stage** (`DeterministicPhoneValidator`):
+   - пустые/короткие/слишком длинные строки, нецифровой мусор, все одинаковые цифры
+   - **NANP (US/CA)**: ровно 10 цифр после очистки, если код города и офиса не начинаются с `0`/`1` → `+1` + 10 цифр
+   - **Россия, внутренний «8»**: 11 цифр, начало `89…` (моб.) или `880…` (напр. 8-800) → замена ведущей `8` на `+7` и дальше 10 национальных цифр
+   - известные коды стран (в т.ч. `+7`, `+44`, `+52`, …) для номеров уже с цифрами страны без `+`
+   - номера с `+` и известным CC → E.164
+   - **исключение**: последовательности `0123456789` / `9876543210` не получают авто-`+1` (оставляются на LLM / отказ)
+2. **LLM stage** (`gpt-4o-mini`):
+   - только если deterministic вернул `recoverable` (например неоднозначный 10-значный, не NANP)
+   - structured JSON, retry до 3 раз, затем снова deterministic-проверка ответа
+3. **Post-LLM fallback**: если LLM не дал валидный номер, ещё раз пробуется NANP `+1` для 10 цифр (кроме «лестничных» последовательностей)
 
 ## Local Development
 Backend:
@@ -223,7 +224,7 @@ Frontend:
 
 ## Tests
 - Весь backend: `pytest`
-- Вебхук и нормализация CRM JSON: `pytest tests/integration/test_webhook.py tests/unit/test_crm_payload.py`
+- Вебхук, нормализация CRM JSON и валидатор: `pytest tests/integration/test_webhook.py tests/unit/test_crm_payload.py tests/unit/test_deterministic_validator.py tests/unit/test_pipeline.py`
 
 ## Database Migrations (Alembic)
 - Миграции находятся в `migrations/versions`.

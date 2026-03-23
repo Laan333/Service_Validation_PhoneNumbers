@@ -1,3 +1,5 @@
+import asyncio
+
 from app.domain.enums import ValidationStatus
 from app.services.deterministic_validator import DeterministicPhoneValidator
 from app.services.phone_pipeline import PhoneValidationPipeline
@@ -21,15 +23,47 @@ class FakeLlmCorrector:
         return Result()
 
 
-async def test_pipeline_uses_llm_for_recoverable_case() -> None:
-    repo = InMemoryRepository()
-    pipeline = PhoneValidationPipeline(
-        validator=DeterministicPhoneValidator(),
-        llm_corrector=FakeLlmCorrector(),
-        repository=repo,  # type: ignore[arg-type]
-    )
+class FakeLlm916:
+    async def attempt_fix(self, raw_phone: str):
+        class Result:
+            normalized_phone = "+19161234567"
+            recoverable = True
+            reason = "ok"
 
-    result = await pipeline.process("lead-1", "4155552671")
+        return Result()
 
-    assert result.status == ValidationStatus.VALID
-    assert result.normalized_phone == "+14155552671"
+
+def test_pipeline_uses_llm_for_recoverable_case() -> None:
+    """4155552671 is valid NANP — deterministic succeeds without LLM."""
+
+    async def _run() -> None:
+        repo = InMemoryRepository()
+        pipeline = PhoneValidationPipeline(
+            validator=DeterministicPhoneValidator(),
+            llm_corrector=FakeLlmCorrector(),
+            repository=repo,  # type: ignore[arg-type]
+        )
+        result = await pipeline.process("lead-1", "4155552671")
+        assert result.status == ValidationStatus.VALID
+        assert result.normalized_phone == "+14155552671"
+        assert result.source == "deterministic"
+
+    asyncio.run(_run())
+
+
+def test_pipeline_calls_llm_for_non_nanp_ten_digit() -> None:
+    """9161234567 is not valid NANP (exchange 123); LLM can still recover."""
+
+    async def _run() -> None:
+        repo = InMemoryRepository()
+        pipeline = PhoneValidationPipeline(
+            validator=DeterministicPhoneValidator(),
+            llm_corrector=FakeLlm916(),
+            repository=repo,  # type: ignore[arg-type]
+        )
+        result = await pipeline.process("lead-916", "9161234567")
+        assert result.status == ValidationStatus.VALID
+        assert result.normalized_phone == "+19161234567"
+        assert result.source == "llm"
+
+    asyncio.run(_run())

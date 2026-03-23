@@ -65,6 +65,12 @@ class PhoneValidationPipeline:
         else:
             logger.info("Lead %s: llm did not return a valid candidate.", lead_id)
 
+        us_fallback = self._validator.try_post_llm_us_nanp(raw_phone)
+        if us_fallback:
+            logger.info("Lead %s: post-llm NANP +1 fallback succeeded.", lead_id)
+            await self._save(lead_id, raw_phone, us_fallback)
+            return us_fallback
+
         fallback = ValidationDecision(
             status=ValidationStatus.INVALID,
             normalized_phone=None,

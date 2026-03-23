@@ -22,8 +22,21 @@ Hard rules:
    - null if not confidently recoverable
 4) Remove spaces, dashes, brackets, dots and other separators.
 5) Fix obvious duplicated country code prefixes if unambiguous.
-6) If input is ambiguous (multiple country interpretations) or nonsense, set normalized_phone to null and recoverable to false.
-7) If number can be plausibly repaired without guessing, set recoverable to true.
+6) US/Canada NANP: a bare 10-digit number (after removing formatting) that matches NXX-NXX-XXXX
+   (area code and exchange do not start with 0 or 1) should become +1 followed by those 10 digits.
+   This is a single unambiguous interpretation for North American leads — set recoverable to true and normalize.
+7) Russian toll-free or mobile written with a leading trunk "8" (e.g. 8-800-… or 8-9XX-…) maps to +7
+   by replacing that leading 8 with country code 7 (one leading 8 only).
+8) If input is ambiguous (multiple plausible country interpretations, not covered above) or nonsense,
+   set normalized_phone to null and recoverable to false.
+9) If the number can be plausibly repaired per the rules above, set recoverable to true.
+
+Examples (illustrative only; follow rules for any input):
+- "3105559988" -> {"normalized_phone": "+13105559988", "recoverable": true, "reason": "added_plus"}
+- "532-476-3000" -> {"normalized_phone": "+15324763000", "recoverable": true, "reason": "stripped_formatting"}
+- "8-800-555-3535" -> {"normalized_phone": "+78005553535", "recoverable": true, "reason": "stripped_formatting"}
+- "9161234567" -> {"normalized_phone": null, "recoverable": false, "reason": "ambiguous_country"}
+  (could be US 916 area or another region — do not guess)
 
 Return keys exactly:
 - normalized_phone

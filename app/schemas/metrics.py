@@ -37,6 +37,12 @@ class RecentValidationItem(BaseModel):
     reason: str | None
     source: str
     processed_at: str
+    client_ip: str | None = None
+    ip_country: str | None = None
+    assumed_dial_cc: str | None = None
+    geo_mismatch: bool = False
+    validation_confidence: str = "deterministic"
+    default_cc_applied: bool = False
 
 
 class RecentValidationsResponse(BaseModel):

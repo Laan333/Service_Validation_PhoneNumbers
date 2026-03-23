@@ -5,6 +5,11 @@ from app.services.deterministic_validator import DeterministicPhoneValidator
 from app.services.phone_pipeline import PhoneValidationPipeline
 
 
+class FakeIpGeo:
+    async def resolve(self, ip: str | None) -> tuple[str, bool]:
+        return ("US", True)
+
+
 class InMemoryRepository:
     def __init__(self) -> None:
         self.records = []
@@ -14,7 +19,7 @@ class InMemoryRepository:
 
 
 class FakeLlmCorrector:
-    async def attempt_fix(self, raw_phone: str):
+    async def attempt_fix(self, raw_phone: str, *, geo_country_iso: str | None = None):
         class Result:
             normalized_phone = "+14155552671" if "415" in raw_phone else None
             recoverable = normalized_phone is not None
@@ -24,7 +29,7 @@ class FakeLlmCorrector:
 
 
 class FakeLlm916:
-    async def attempt_fix(self, raw_phone: str):
+    async def attempt_fix(self, raw_phone: str, *, geo_country_iso: str | None = None):
         class Result:
             normalized_phone = "+19161234567"
             recoverable = True
@@ -42,6 +47,7 @@ def test_pipeline_uses_llm_for_recoverable_case() -> None:
             validator=DeterministicPhoneValidator(),
             llm_corrector=FakeLlmCorrector(),
             repository=repo,  # type: ignore[arg-type]
+            ip_geo=FakeIpGeo(),
         )
         result = await pipeline.process("lead-1", "4155552671")
         assert result.status == ValidationStatus.VALID
@@ -60,6 +66,7 @@ def test_pipeline_calls_llm_for_non_nanp_ten_digit() -> None:
             validator=DeterministicPhoneValidator(),
             llm_corrector=FakeLlm916(),
             repository=repo,  # type: ignore[arg-type]
+            ip_geo=FakeIpGeo(),
         )
         result = await pipeline.process("lead-916", "9161234567")
         assert result.status == ValidationStatus.VALID

@@ -24,6 +24,12 @@ class LeadValidationRepository:
             reason=record.reason,
             source=record.source,
             processed_at=record.processed_at,
+            client_ip=record.client_ip,
+            ip_country=record.ip_country,
+            assumed_dial_cc=record.assumed_dial_cc,
+            geo_mismatch=record.geo_mismatch,
+            validation_confidence=record.validation_confidence,
+            default_cc_applied=record.default_cc_applied,
         )
         self._db_session.add(orm)
         await self._db_session.commit()
@@ -99,6 +105,12 @@ class LeadValidationRepository:
                 "reason": row.reason,
                 "source": row.source,
                 "processed_at": row.processed_at.isoformat() if row.processed_at else "",
+                "client_ip": row.client_ip,
+                "ip_country": row.ip_country,
+                "assumed_dial_cc": row.assumed_dial_cc,
+                "geo_mismatch": row.geo_mismatch,
+                "validation_confidence": row.validation_confidence,
+                "default_cc_applied": row.default_cc_applied,
             }
             for row in rows
         ]

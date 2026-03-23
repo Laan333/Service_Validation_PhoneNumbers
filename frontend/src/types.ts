@@ -22,6 +22,12 @@ export type RecentValidation = {
   reason: string | null;
   source: string;
   processed_at: string;
+  client_ip?: string | null;
+  ip_country?: string | null;
+  assumed_dial_cc?: string | null;
+  geo_mismatch?: boolean;
+  validation_confidence?: string;
+  default_cc_applied?: boolean;
 };
 
 /** Same fields as ``mock.json`` / Bitrix-style webhook body. */
@@ -41,6 +47,7 @@ export type CrmMockLead = {
   UTM_CAMPAIGN?: string;
   UTM_CONTENT?: string;
   DATE_CREATE?: string;
+  VISITOR_IP?: string;
 };
 
 export type ReplayLogItem = {

@@ -29,6 +29,7 @@ class CrmLeadPayload(BaseModel):
     utm_campaign: str | None = Field(default=None, alias="UTM_CAMPAIGN")
     utm_content: str | None = Field(default=None, alias="UTM_CONTENT")
     date_create: datetime | None = Field(default=None, alias="DATE_CREATE")
+    visitor_ip: str | None = Field(default=None, alias="VISITOR_IP")
 
     @field_validator("id", mode="before")
     @classmethod

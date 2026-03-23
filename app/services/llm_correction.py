@@ -56,7 +56,7 @@ class LlmCorrectionResult(BaseModel):
 class LlmCorrector(Protocol):
     """Port for LLM correction services."""
 
-    async def attempt_fix(self, raw_phone: str) -> LlmCorrectionResult | None:
+    async def attempt_fix(self, raw_phone: str, *, geo_country_iso: str | None = None) -> LlmCorrectionResult | None:
         """Attempt recovering phone string."""
 
 
@@ -68,7 +68,7 @@ class OpenAiLlmCorrector:
         self._model = settings.openai_model
         self._timeout = settings.openai_timeout_seconds
 
-    async def attempt_fix(self, raw_phone: str) -> LlmCorrectionResult | None:
+    async def attempt_fix(self, raw_phone: str, *, geo_country_iso: str | None = None) -> LlmCorrectionResult | None:
         """Attempt to recover raw phone with retries and strict JSON parsing."""
         if not self._api_key:
             return None
@@ -83,8 +83,16 @@ class OpenAiLlmCorrector:
             ),
         }
 
+        geo_line = ""
+        if geo_country_iso:
+            geo_line = (
+                f"visitor_geo_country_iso: {geo_country_iso}\n"
+                "Use this as the default region when choosing a country calling code for local numbers "
+                "(e.g. 10-digit numbers without a country prefix).\n"
+            )
         user_prompt = (
             "Normalize this phone candidate to E.164 if possible.\n"
+            f"{geo_line}"
             f"input_phone: {raw_phone}\n"
             f"output_schema: {json.dumps(schema_hint)}\n"
             "Important: return only JSON object."

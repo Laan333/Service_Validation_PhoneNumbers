@@ -13,6 +13,12 @@ class ValidationDecision:
     reason: RejectionReason | None
     recoverable: bool = False
     source: str = "deterministic"
+    client_ip: str | None = None
+    ip_country: str | None = None
+    assumed_dial_cc: str | None = None
+    geo_mismatch: bool = False
+    confidence: str = "deterministic"
+    default_cc_applied: bool = False
 
 
 @dataclass(slots=True)
@@ -26,3 +32,9 @@ class LeadValidationRecord:
     reason: str | None
     source: str
     processed_at: datetime
+    client_ip: str | None = None
+    ip_country: str | None = None
+    assumed_dial_cc: str | None = None
+    geo_mismatch: bool = False
+    validation_confidence: str = "deterministic"
+    default_cc_applied: bool = False

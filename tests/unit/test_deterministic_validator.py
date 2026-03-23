@@ -1,4 +1,5 @@
 from app.domain.enums import RejectionReason, ValidationStatus
+from app.domain.phone_context import PhoneValidationContext
 from app.services.deterministic_validator import DeterministicPhoneValidator
 
 
@@ -71,10 +72,30 @@ def test_short_string_rejected() -> None:
 
 def test_post_llm_nanp_fallback() -> None:
     validator = DeterministicPhoneValidator()
-    fb = validator.try_post_llm_us_nanp("3105559988")
+    ctx_us = PhoneValidationContext(None, "US", True)
+    fb = validator.try_post_llm_us_nanp("3105559988", ctx_us)
     assert fb is not None
     assert fb.normalized_phone == "+13105559988"
     assert fb.status == ValidationStatus.VALID
 
-    assert validator.try_post_llm_us_nanp("9876543210") is None
-    assert validator.try_post_llm_us_nanp("9161234567") is None
+    assert validator.try_post_llm_us_nanp("9876543210", ctx_us) is None
+    assert validator.try_post_llm_us_nanp("9161234567", ctx_us) is None
+    ctx_mx = PhoneValidationContext(None, "MX", False)
+    assert validator.try_post_llm_us_nanp("3105559988", ctx_mx) is None
+
+
+def test_mexico_ten_digit_uses_country_code_from_geo() -> None:
+    validator = DeterministicPhoneValidator()
+    ctx = PhoneValidationContext(None, "MX", False)
+    decision = validator.validate("5512345678", ctx)
+    assert decision.status == ValidationStatus.VALID
+    assert decision.normalized_phone == "+525512345678"
+    assert decision.assumed_dial_cc == "52"
+
+
+def test_strip_erroneous_plus_one_before_italy() -> None:
+    validator = DeterministicPhoneValidator()
+    ctx = PhoneValidationContext(None, "US", True)
+    decision = validator.validate("+1393792497015", ctx)
+    assert decision.status == ValidationStatus.VALID
+    assert decision.normalized_phone == "+393792497015"

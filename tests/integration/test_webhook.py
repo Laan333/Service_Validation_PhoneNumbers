@@ -8,8 +8,8 @@ from app.main import app
 
 
 class FakePipeline:
-    async def process(self, lead_id: str, raw_phone: str) -> ValidationDecision:
-        _ = lead_id, raw_phone
+    async def process(self, lead_id: str, raw_phone: str, *, client_ip: str | None = None) -> ValidationDecision:
+        _ = lead_id, raw_phone, client_ip
         return ValidationDecision(
             status=ValidationStatus.VALID,
             normalized_phone="+14155552671",

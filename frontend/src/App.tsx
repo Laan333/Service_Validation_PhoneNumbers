@@ -157,7 +157,7 @@ function RecentPanel({
   const filtered = useMemo(
     () =>
       recent.filter((item) =>
-        `${item.lead_id} ${item.contact_phone_raw} ${item.normalized_phone ?? ""} ${item.reason ?? ""}`
+        `${item.lead_id} ${item.contact_phone_raw} ${item.normalized_phone ?? ""} ${item.reason ?? ""} ${item.ip_country ?? ""} ${item.client_ip ?? ""}`
           .toLowerCase()
           .includes(query.toLowerCase()),
       ),
@@ -238,6 +238,11 @@ function RecentPanel({
               <th>Status</th>
               <th>Reason</th>
               <th>Source</th>
+              <th>IP country</th>
+              <th>CC</th>
+              <th>Mismatch</th>
+              <th>Conf.</th>
+              <th>Def. CC</th>
               <th>At</th>
               <th>Actions</th>
             </tr>
@@ -264,6 +269,11 @@ function RecentPanel({
                 <td>
                   <span className="source-chip">{item.source}</span>
                 </td>
+                <td title={item.client_ip ?? ""}>{item.ip_country ?? "-"}</td>
+                <td className="mono-cell">{item.assumed_dial_cc ?? "-"}</td>
+                <td>{item.geo_mismatch ? "yes" : "no"}</td>
+                <td>{item.validation_confidence ?? "deterministic"}</td>
+                <td>{item.default_cc_applied ? "yes" : "no"}</td>
                 <td>{formatDate(item.processed_at)}</td>
                 <td>
                   <button
@@ -280,7 +290,7 @@ function RecentPanel({
             ))}
             {paged.length === 0 && (
               <tr>
-                <td colSpan={8} className="empty-table">
+                <td colSpan={13} className="empty-table">
                   No rows match your current filters.
                 </td>
               </tr>
@@ -343,6 +353,30 @@ function RecentPanel({
               <div>
                 <span className="meta-label">Processed at</span>
                 <p>{formatDate(selectedRecord.processed_at)}</p>
+              </div>
+              <div>
+                <span className="meta-label">Client IP</span>
+                <p className="mono-cell">{selectedRecord.client_ip ?? "-"}</p>
+              </div>
+              <div>
+                <span className="meta-label">IP country (geo)</span>
+                <p>{selectedRecord.ip_country ?? "-"}</p>
+              </div>
+              <div>
+                <span className="meta-label">Assumed dial CC</span>
+                <p className="mono-cell">{selectedRecord.assumed_dial_cc ?? "-"}</p>
+              </div>
+              <div>
+                <span className="meta-label">Geo mismatch</span>
+                <p>{selectedRecord.geo_mismatch ? "yes" : "no"}</p>
+              </div>
+              <div>
+                <span className="meta-label">Confidence</span>
+                <p>{selectedRecord.validation_confidence ?? "deterministic"}</p>
+              </div>
+              <div>
+                <span className="meta-label">Default CC applied</span>
+                <p>{selectedRecord.default_cc_applied ? "yes" : "no"}</p>
               </div>
             </div>
             <div className="mock-details">

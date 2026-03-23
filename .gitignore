@@ -1,0 +1,32 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.egg-info/
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+coverage/
+
+# IDE
+.idea/
+.vscode/
+
+# Docker
+*.pid
+postgres_data/

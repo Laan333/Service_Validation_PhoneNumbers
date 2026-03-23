@@ -1,0 +1,19 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+COPY pyproject.toml /app/pyproject.toml
+RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir .
+
+COPY app /app/app
+COPY migrations /app/migrations
+COPY alembic.ini /app/alembic.ini
+COPY scripts/backend-entrypoint.sh /app/scripts/backend-entrypoint.sh
+RUN chmod +x /app/scripts/backend-entrypoint.sh
+
+EXPOSE 8000
+
+CMD ["/app/scripts/backend-entrypoint.sh"]

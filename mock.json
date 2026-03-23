@@ -1,0 +1,31 @@
+[
+  {
+    "ID": "190326",
+    "TITLE": "New deal from Laura Palmer",
+    "STAGE_ID": "NEW",
+    "CURRENCY_ID": "USD",
+    "CONTACT_ID": "821320",
+    "CONTACT_NAME": "Laura Palmer",
+    "CONTACT_EMAIL": "laurapalmer@gmail.com",
+    "CONTACT_PHONE": "8-800-555-3535",
+    "SOURCE_ID": "WEB",
+    "COMMENTS": "utm source: google",
+    "UTM_SOURCE": "google",
+    "UTM_MEDIUM": "cpc",
+    "UTM_CAMPAIGN": "{01_Performance_Elementary_tCPA}",
+    "UTM_CONTENT": "{Elementary}",
+    "DATE_CREATE": "2026-03-11T05:49:28+03:00"
+  },
+  {
+    "ID": "190327",
+    "TITLE": "Bad phone example",
+    "CONTACT_PHONE": "11111111111",
+    "DATE_CREATE": "2026-03-11T06:01:00+03:00"
+  },
+  {
+    "ID": "190328",
+    "TITLE": "Recoverable US number",
+    "CONTACT_PHONE": "415-555-2671",
+    "DATE_CREATE": "2026-03-11T06:10:00+03:00"
+  }
+]
